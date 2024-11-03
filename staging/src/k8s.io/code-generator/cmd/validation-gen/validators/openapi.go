@@ -35,12 +35,14 @@ const (
 	markerPrefix     = "k8s:validation:"
 	formatTagName    = markerPrefix + ":format"
 	maxLengthTagName = markerPrefix + ":maxLength"
+	maxItemsTagName  = markerPrefix + ":maxItems"
 )
 
 var (
 	ipValidator        = types.Name{Package: libValidationPkg, Name: "IP"}
 	dnsLabelValidator  = types.Name{Package: libValidationPkg, Name: "DNSLabel"}
 	maxLengthValidator = types.Name{Package: libValidationPkg, Name: "MaxLength"}
+	maxItemsValidator  = types.Name{Package: libValidationPkg, Name: "MaxItems"}
 )
 
 func (openAPIDeclarativeValidator) ExtractValidations(t *types.Type, comments []string) (Validations, error) {
@@ -52,6 +54,9 @@ func (openAPIDeclarativeValidator) ExtractValidations(t *types.Type, comments []
 	}
 	if schema.MaxLength != nil {
 		result.AddFunction(Function(maxLengthTagName, DefaultFlags, maxLengthValidator, *schema.MaxLength))
+	}
+	if schema.MaxItems != nil {
+		result.AddFunction(Function(maxItemsTagName, ShortCircuit, maxItemsValidator, *schema.MaxItems))
 	}
 	if len(schema.Format) > 0 {
 		formatFunction := FormatValidationFunction(schema.Format)
@@ -83,6 +88,16 @@ func (openAPIDeclarativeValidator) Docs() []TagDoc {
 			Description: "<non-negative integer>",
 			Docs:        "This field must be no more than X characters long.",
 		}},
+	}, {
+		Tag:         maxItemsTagName,
+		Description: "Indidates that a slice field has a limit on its size.",
+		Contexts:    []TagContext{TagContextType, TagContextField},
+		Payloads: []TagPayloadDoc{
+			{
+				Description: "<non-negative integer>",
+				Docs:        "This field must be no more than X items long.",
+			},
+		},
 	}}
 }
 

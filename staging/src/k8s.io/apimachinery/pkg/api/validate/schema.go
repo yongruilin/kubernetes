@@ -72,3 +72,11 @@ func Optional[T comparable](_ operation.Context, fldPath *field.Path, value, _ *
 	}
 	return field.ErrorList{field.Required(fldPath, "optional value was not specified")}
 }
+
+// MaxItems verifies that the specified slice is not longer than max items.
+func MaxItems[T any](_ operation.Context, fldPath *field.Path, value, _ []T, max int) field.ErrorList {
+	if len(value) > max {
+		return field.ErrorList{field.TooMany(fldPath, len(value), max)}
+	}
+	return nil
+}
