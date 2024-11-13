@@ -119,7 +119,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.Namespace)
-			return Validate_NamespaceStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Namespace](oldObj), func(oldObj *corev1.Namespace) corev1.NamespaceStatus { return oldObj.Status }), nil)
+			return Validate_NamespaceStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Namespace](oldObj), func(oldObj *corev1.Namespace) *corev1.NamespaceStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -135,7 +135,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.Node)
-			return Validate_NodeStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Node](oldObj), func(oldObj *corev1.Node) corev1.NodeStatus { return oldObj.Status }), nil)
+			return Validate_NodeStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Node](oldObj), func(oldObj *corev1.Node) *corev1.NodeStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -157,7 +157,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.PersistentVolume)
-			return Validate_PersistentVolumeStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PersistentVolume](oldObj), func(oldObj *corev1.PersistentVolume) corev1.PersistentVolumeStatus { return oldObj.Status }), nil)
+			return Validate_PersistentVolumeStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PersistentVolume](oldObj), func(oldObj *corev1.PersistentVolume) *corev1.PersistentVolumeStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -167,7 +167,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.PersistentVolumeClaim)
-			return Validate_PersistentVolumeClaimStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PersistentVolumeClaim](oldObj), func(oldObj *corev1.PersistentVolumeClaim) corev1.PersistentVolumeClaimStatus { return oldObj.Status }), nil)
+			return Validate_PersistentVolumeClaimStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PersistentVolumeClaim](oldObj), func(oldObj *corev1.PersistentVolumeClaim) *corev1.PersistentVolumeClaimStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -189,7 +189,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.Pod)
-			return Validate_PodStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Pod](oldObj), func(oldObj *corev1.Pod) corev1.PodStatus { return oldObj.Status }), nil)
+			return Validate_PodStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Pod](oldObj), func(oldObj *corev1.Pod) *corev1.PodStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -235,7 +235,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.PodStatusResult)
-			return Validate_PodStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PodStatusResult](oldObj), func(oldObj *corev1.PodStatusResult) corev1.PodStatus { return oldObj.Status }), nil)
+			return Validate_PodStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.PodStatusResult](oldObj), func(oldObj *corev1.PodStatusResult) *corev1.PodStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -263,7 +263,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.ReplicationController)
-			return Validate_ReplicationControllerStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.ReplicationController](oldObj), func(oldObj *corev1.ReplicationController) corev1.ReplicationControllerStatus { return oldObj.Status }), nil)
+			return Validate_ReplicationControllerStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.ReplicationController](oldObj), func(oldObj *corev1.ReplicationController) *corev1.ReplicationControllerStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -279,7 +279,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.ResourceQuota)
-			return Validate_ResourceQuotaStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.ResourceQuota](oldObj), func(oldObj *corev1.ResourceQuota) corev1.ResourceQuotaStatus { return oldObj.Status }), nil)
+			return Validate_ResourceQuotaStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.ResourceQuota](oldObj), func(oldObj *corev1.ResourceQuota) *corev1.ResourceQuotaStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
@@ -313,7 +313,7 @@ func RegisterValidations(scheme *runtime.Scheme) error {
 		}
 		if len(subresources) == 1 && subresources[0] == "status" {
 			root := obj.(*corev1.Service)
-			return Validate_ServiceStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Service](oldObj), func(oldObj *corev1.Service) corev1.ServiceStatus { return oldObj.Status }), nil)
+			return Validate_ServiceStatus(opCtx, &root.Status, safe.Field(safe.Cast[*corev1.Service](oldObj), func(oldObj *corev1.Service) *corev1.ServiceStatus { return &oldObj.Status }), nil)
 		}
 		return field.ErrorList{field.InternalError(nil, fmt.Errorf("no validation found for %T, subresources: %v", obj, subresources))}
 	})
