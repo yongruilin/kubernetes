@@ -782,6 +782,12 @@ func (g *genValidations) emitRegisterFunction(c *generator.Context, schemeRegist
 		sw.Do("  }\n", targs)
 
 		if statusType != nil {
+			targs["statusTypePfx"] = ""
+			targs["statusTypePtrPfx"] = ""
+			if !isNilableType(statusType) {
+				targs["statusTypePfx"] = "*"
+				targs["statusTypePtrPfx"] = "&"
+			}
 			sw.Do("  if len(subresources) == 1 && subresources[0] == \"status\" {\n", targs)
 			if g.hasValidations(g.discovered.typeNodes[statusType]) {
 				sw.Do("    root := obj.($.typePfx$$.rootType|raw$)\n", targs)
@@ -790,7 +796,7 @@ func (g *genValidations) emitRegisterFunction(c *generator.Context, schemeRegist
 				sw.Do("               &root.$.statusField$, ", targs)
 				sw.Do("               $.safe.Field|raw$(", targs)
 				sw.Do("                   $.safe.Cast|raw$[$.typePfx$$.rootType|raw$](oldObj), ", targs)
-				sw.Do("                   func(oldObj $.typePfx$$.rootType|raw$) $.statusType|raw$ { return oldObj.$.statusField$ }), ", targs)
+				sw.Do("                   func(oldObj $.typePfx$$.rootType|raw$) $.statusTypePfx$$.statusType|raw$ { return $.statusTypePtrPfx$oldObj.$.statusField$ }), ", targs)
 				sw.Do("                   nil)\n", targs)
 			} else {
 				sw.Do("    return nil // $.statusType|raw$ has no validation\n", targs)
