@@ -29,7 +29,7 @@ func Test(t *testing.T) {
 	st.Value(&DU{D: DM2, M2: &M2{S: "x"}}).ExpectValid()
 
 	st.Value(&DU{D: DM2, M1: &M1{S: "x"}, M2: &M2{S: "x"}}).ExpectInvalid(
-		field.Invalid(field.NewPath("m1"), "", "may only be specified when `d` is \"M2\""),
+		field.Invalid(field.NewPath("m1"), "", "may only be specified when `d` is \"M1\""),
 	)
 
 	st.Value(&DU{D: DM1}).ExpectInvalid(
