@@ -86,7 +86,7 @@ func DiscriminatedUnion[T ~string](opCtx operation.Context, fldPath *field.Path,
 		isSpecified := rv.IsValid() && !rv.IsZero()
 		if isSpecified && !isDiscriminatedMember {
 			errs = append(errs, field.Invalid(fldPath.Child(member.fieldName), "",
-				fmt.Sprintf("may only be specified when `%s` is %q", union.discriminatorName, discriminatorValue)))
+				fmt.Sprintf("may only be specified when `%s` is %q", union.discriminatorName, member.memberName)))
 		} else if !isSpecified && isDiscriminatedMember {
 			errs = append(errs, field.Invalid(fldPath.Child(member.fieldName), "",
 				fmt.Sprintf("must be specified when `%s` is %q", union.discriminatorName, discriminatorValue)))
