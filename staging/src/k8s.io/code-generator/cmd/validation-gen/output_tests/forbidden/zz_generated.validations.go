@@ -100,5 +100,6 @@ func Validate_T2(opCtx operation.Context, obj, oldObj *T2, fldPath *field.Path) 
 		return // do not proceed
 	}
 
+	// field T2.S has no validation
 	return errs
 }
