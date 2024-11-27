@@ -148,20 +148,36 @@ func (g *genValidations) GenerateType(c *generator.Context, t *types.Type, w io.
 	return nil
 }
 
+// hasValidations checks and caches whether the given typeNode has any
+// validations, transitively.
 func (g *genValidations) hasValidations(n *typeNode) bool {
+	seen := map[*typeNode]bool{}
+	return g.hasValidationsImpl(n, seen)
+}
+
+// hasValidationsImpl implements hasValidations without risk of infinite
+// recursion.
+func (g *genValidations) hasValidationsImpl(n *typeNode, seen map[*typeNode]bool) bool {
 	if n == nil {
 		return false
 	}
+
+	if seen[n] {
+		return false // prevent infinite recursion
+	}
+	seen[n] = true
+
 	if r, found := g.hasValidationsCache[n]; found {
 		return r
 	}
-	r := g.hasValidationsMiss(n)
+
+	r := g.hasValidationsMiss(n, seen)
 	g.hasValidationsCache[n] = r
 	return r
 }
 
-// Called in case of a cache miss.
-func (g *genValidations) hasValidationsMiss(n *typeNode) bool {
+// hasValidationsMiss is called in case of a cache miss.
+func (g *genValidations) hasValidationsMiss(n *typeNode, seen map[*typeNode]bool) bool {
 	if !n.typeValidations.Empty() {
 		return true
 	}
@@ -176,7 +192,7 @@ func (g *genValidations) hasValidationsMiss(n *typeNode) bool {
 		if !c.fieldValidations.Empty() || !c.keyValidations.Empty() || !c.elemValidations.Empty() {
 			return true
 		}
-		if g.hasValidations(c.node) {
+		if g.hasValidationsImpl(c.node, seen) {
 			return true
 		}
 	}
