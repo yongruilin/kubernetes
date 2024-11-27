@@ -55,3 +55,9 @@ type E1 []E1
 // +validateFalse="type E2"
 // +eachVal=+validateFalse="type E2 values"
 type E2 []*E2
+
+// NOTE: no validations.
+type T3 struct {
+	// NOTE: no validations.
+	PT3 *T3 `json:"pt3"`
+}
