@@ -211,7 +211,7 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 			klog.V(2).InfoS("  did not find required tag", "tag", tagName)
 			continue
 		}
-		if len(typesWith) == 0 {
+		if len(typesWith) == 1 && typesWith[0] == "" {
 			klog.Fatalf("found package tag %q with no value", tagName)
 		}
 		shouldCreateObjectValidationFn := func(t *types.Type) bool {
