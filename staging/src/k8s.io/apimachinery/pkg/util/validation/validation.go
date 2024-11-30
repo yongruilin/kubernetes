@@ -23,6 +23,7 @@ import (
 	"strings"
 	"unicode"
 
+	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/api/validate"
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -357,8 +358,9 @@ func IsValidPortName(port string) []string {
 }
 
 // IsValidIP tests that the argument is a valid IP address.
-// Deprecated: Use k8s.io/apimachinery/pkg/api/validate.IP instead.
-var IsValidIP = validate.IP
+func IsValidIP(fldPath *field.Path, value string) field.ErrorList {
+	return validate.IP(operation.Context{}, fldPath, &value, nil)
+}
 
 // IsValidIPv4Address tests that the argument is a valid IPv4 address.
 func IsValidIPv4Address(fldPath *field.Path, value string) field.ErrorList {
