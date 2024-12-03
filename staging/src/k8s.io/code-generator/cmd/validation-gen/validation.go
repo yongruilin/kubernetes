@@ -380,8 +380,14 @@ func (td *typeDiscoverer) discover(t *types.Type, fldPath *field.Path) (*typeNod
 		}
 	}
 	if t.Kind == types.Pointer {
-		if t.Elem.Kind == types.Pointer {
+		// Catch some edge cases that we don't want to handle.
+		switch t.Elem.Kind {
+		case types.Pointer:
 			return nil, fmt.Errorf("field %s (%s): pointers to pointers are not supported", fldPath.String(), t)
+		case types.Slice:
+			return nil, fmt.Errorf("field %s (%s): pointers to slices are not supported", fldPath.String(), t)
+		case types.Map:
+			return nil, fmt.Errorf("field %s (%s): pointers to maps are not supported", fldPath.String(), t)
 		}
 		// Remove pointerness.
 		t = t.Elem
