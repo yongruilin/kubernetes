@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	ipValidator        = types.Name{Package: libValidationPkg, Name: "IP"}
+	ipValidator        = types.Name{Package: libValidationPkg, Name: "IPSloppy"}
 	dnsLabelValidator  = types.Name{Package: libValidationPkg, Name: "DNSLabel"}
 	maxLengthValidator = types.Name{Package: libValidationPkg, Name: "MaxLength"}
 	maxItemsValidator  = types.Name{Package: libValidationPkg, Name: "MaxItems"}
@@ -101,8 +101,8 @@ func (openAPIDeclarativeValidator) Docs() []TagDoc {
 		Description: "Indicates that a string field has a particular format.",
 		Contexts:    []TagContext{TagContextType, TagContextField},
 		Payloads: []TagPayloadDoc{{
-			Description: "ip",
-			Docs:        "This field holds an IP address value, either IPv4 or IPv6.",
+			Description: "ip-sloppy",
+			Docs:        "This field holds an IPv4 or IPv6 address value. IPv4 octets may have leading zeros.",
 		}, {
 			Description: "dns-label",
 			Docs:        "This field holds a DNS label value.",
@@ -133,7 +133,7 @@ func getFormatValidationFunction(format string) (FunctionGen, error) {
 	// all lower-case, dashes between words. See
 	// https://json-schema.org/draft/2020-12/json-schema-validation#name-defined-formats
 	// for more examples.
-	if format == "ip" {
+	if format == "ip-sloppy" {
 		return Function(formatTagName, DefaultFlags, ipValidator), nil
 	}
 	if format == "dns-label" {

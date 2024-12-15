@@ -24,7 +24,7 @@ var localSchemeBuilder = testscheme.New()
 type T struct {
 	TypeMeta int
 
-	// +k8s:format=ip
+	// +k8s:format=ip-sloppy
 	IPField string `json:"ipField"`
 
 	// +k8s:format=dns-label

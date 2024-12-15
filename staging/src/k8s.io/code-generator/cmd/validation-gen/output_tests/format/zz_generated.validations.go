@@ -51,7 +51,7 @@ func Validate_T(opCtx operation.Context, obj, oldObj *T, fldPath *field.Path) (e
 	// field T.IPField
 	errs = append(errs,
 		func(obj, oldObj *string, fldPath *field.Path) (errs field.ErrorList) {
-			errs = append(errs, validate.IP(opCtx, fldPath, obj, oldObj)...)
+			errs = append(errs, validate.IPSloppy(opCtx, fldPath, obj, oldObj)...)
 			return
 		}(&obj.IPField, safe.Field(oldObj, func(oldObj *T) *string { return &oldObj.IPField }), fldPath.Child("ipField"))...)
 
