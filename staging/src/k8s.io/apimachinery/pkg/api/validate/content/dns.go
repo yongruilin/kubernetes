@@ -21,13 +21,16 @@ import (
 	"unicode"
 )
 
-const dns1123LabelFmt string = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+// This regex describes the interior of a label, which is slightly different
+// than the rules for the first and last characters. For better errors, we
+// handle them seperately.
+const dns1123LabelInteriorFmt string = "[-a-z0-9]+"
 const dns1123LabelMaxLength int = 63
 
 // DNS1123LabelMaxLength is a DNS label's max length (RFC 1123).
 const DNS1123LabelMaxLength int = dns1123LabelMaxLength
 
-var dnsLabelRegexp = regexp.MustCompile("^" + dns1123LabelFmt + "$")
+var dnsLabelRegexp = regexp.MustCompile("^" + dns1123LabelInteriorFmt + "$")
 
 // IsDNS1123Label returns error messages if the specified value does not
 // parse as per the definition of a label in DNS (approximately RFC 1123).
@@ -35,7 +38,13 @@ func IsDNS1123Label(value string) []string {
 	var errs []string
 	if len(value) > dns1123LabelMaxLength {
 		errs = append(errs, MaxLenError(dns1123LabelMaxLength))
+		return errs // Don't run further validation if we know it is too long.
 	}
+	if len(value) == 0 {
+		errs = append(errs, "must contain at least 1 character")
+		return errs // No point in going further.
+	}
+
 	isAlNum := func(r rune) bool {
 		if r > unicode.MaxASCII {
 			return false
@@ -48,11 +57,12 @@ func IsDNS1123Label(value string) []string {
 		}
 		return false
 	}
-	if runes := []rune(value); len(runes) == 0 || !isAlNum(runes[0]) || !isAlNum(runes[len(runes)-1]) {
+	runes := []rune(value)
+	if !isAlNum(runes[0]) || !isAlNum(runes[len(runes)-1]) {
 		errs = append(errs, "must start and end with lower-case alphanumeric characters")
 	}
-	if !dnsLabelRegexp.MatchString(value) {
-		errs = append(errs, "must consist of lower-case alphanumeric characters or '-'")
+	if len(runes) > 2 && !dnsLabelRegexp.MatchString(string(runes[1:len(runes)-1])) {
+		errs = append(errs, "must contain only lower-case alphanumeric characters or '-'")
 	}
 	return errs
 }

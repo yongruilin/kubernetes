@@ -23,9 +23,14 @@ import (
 )
 
 // DNSLabel verifies that the specified value is a valid DNS label.  It must:
+//   - not be empty
 //   - start and end with lower-case alphanumeric characters
 //   - contain only lower-case alphanumeric characters or dashes
-//   - be less than 64 character long
+//   - be less than 64 characters long
+//
+// All errors returned by this function will be "invalid" type errors. If the
+// caller wants better errors, it must take responsibility for checking things
+// like required/optional and max-length.
 func DNSLabel(opCtx operation.Context, fldPath *field.Path, value, _ *string) field.ErrorList {
 	if value == nil {
 		return nil
