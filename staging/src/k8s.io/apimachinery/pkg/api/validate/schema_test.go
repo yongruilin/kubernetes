@@ -17,31 +17,13 @@ limitations under the License.
 package validate
 
 import (
-	"bytes"
 	"regexp"
-	"strconv"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 )
-
-// helper for nicer output
-func fmtErrs(errs field.ErrorList) string {
-	if len(errs) == 0 {
-		return "<no errors>"
-	}
-	if len(errs) == 1 {
-		return strconv.Quote(errs[0].Error())
-	}
-	buf := bytes.Buffer{}
-	for _, e := range errs {
-		buf.WriteString("\n")
-		buf.WriteString(strconv.Quote(e.Error()))
-	}
-	return buf.String()
-}
 
 func TestMaxLength(t *testing.T) {
 	cases := []struct {
