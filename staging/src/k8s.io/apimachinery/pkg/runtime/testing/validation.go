@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
 )
 
 type VersionValidationRunner func(t *testing.T, versionValidationErrors field.ErrorList)
@@ -38,80 +37,80 @@ type VersionValidationRunner func(t *testing.T, versionValidationErrors field.Er
 //	      errs = append(errs, versionValidationErrors...) // generated declarative validation
 //		  // Validate that the errors are what was expected for this test case.
 //		})
-func RunValidationForEachVersion(t *testing.T, options sets.Set[string], unversioned runtime.Object, fn VersionValidationRunner) {
-	runValidation(t, options, unversioned, fn)
+func RunValidationForEachVersion(t *testing.T, scheme runtime.Scheme, options sets.Set[string], unversioned runtime.Object, fn VersionValidationRunner) {
+	runValidation(t, scheme, options, unversioned, fn)
 }
 
 // RunUpdateValidationForEachVersion is like RunValidationForEachVersion but for update validation.
-func RunUpdateValidationForEachVersion(t *testing.T, options sets.Set[string], unversioned, unversionedOld runtime.Object, fn VersionValidationRunner) {
-	runUpdateValidation(t, options, unversioned, unversionedOld, fn)
+func RunUpdateValidationForEachVersion(t *testing.T, scheme runtime.Scheme, options sets.Set[string], unversioned, unversionedOld runtime.Object, fn VersionValidationRunner) {
+	runUpdateValidation(t, scheme, options, unversioned, unversionedOld, fn)
 }
 
 // RunStatusValidationForEachVersion is like RunUpdateValidationForEachVersion but for status validation.
-func RunStatusValidationForEachVersion(t *testing.T, options sets.Set[string], unversioned, unversionedOld runtime.Object, fn VersionValidationRunner) {
-	runUpdateValidation(t, options, unversioned, unversionedOld, fn, "status")
+func RunStatusValidationForEachVersion(t *testing.T, scheme runtime.Scheme, options sets.Set[string], unversioned, unversionedOld runtime.Object, fn VersionValidationRunner) {
+	runUpdateValidation(t, scheme, options, unversioned, unversionedOld, fn, "status")
 }
 
-func runValidation(t *testing.T, options sets.Set[string], unversioned runtime.Object, fn VersionValidationRunner, subresources ...string) {
-	unversionedGVKs, _, err := legacyscheme.Scheme.ObjectKinds(unversioned)
+func runValidation(t *testing.T, scheme runtime.Scheme, options sets.Set[string], unversioned runtime.Object, fn VersionValidationRunner, subresources ...string) {
+	unversionedGVKs, _, err := scheme.ObjectKinds(unversioned)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, unversionedGVK := range unversionedGVKs {
-		gvs := legacyscheme.Scheme.VersionsForGroupKind(unversionedGVK.GroupKind())
+		gvs := scheme.VersionsForGroupKind(unversionedGVK.GroupKind())
 		for _, gv := range gvs {
 			gvk := gv.WithKind(unversionedGVK.Kind)
 			t.Run(gvk.String(), func(t *testing.T) {
 				if gvk.Version != runtime.APIVersionInternal { // skip internal
-					versioned, err := legacyscheme.Scheme.New(gvk)
+					versioned, err := scheme.New(gvk)
 					if err != nil {
 						t.Fatal(err)
 					}
-					err = legacyscheme.Scheme.Convert(unversioned, versioned, nil)
+					err = scheme.Convert(unversioned, versioned, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
-					fn(t, legacyscheme.Scheme.Validate(options, versioned, subresources...))
+					fn(t, scheme.Validate(options, versioned, subresources...))
 				}
 			})
 		}
 	}
 }
 
-func runUpdateValidation(t *testing.T, options sets.Set[string], unversionedNew, unversionedOld runtime.Object, fn VersionValidationRunner, subresources ...string) {
-	unversionedGVKs, _, err := legacyscheme.Scheme.ObjectKinds(unversionedNew)
+func runUpdateValidation(t *testing.T, scheme runtime.Scheme, options sets.Set[string], unversionedNew, unversionedOld runtime.Object, fn VersionValidationRunner, subresources ...string) {
+	unversionedGVKs, _, err := scheme.ObjectKinds(unversionedNew)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, unversionedGVK := range unversionedGVKs {
-		gvs := legacyscheme.Scheme.VersionsForGroupKind(unversionedGVK.GroupKind())
+		gvs := scheme.VersionsForGroupKind(unversionedGVK.GroupKind())
 		for _, gv := range gvs {
 			gvk := gv.WithKind(unversionedGVK.Kind)
 			t.Run(gvk.String(), func(t *testing.T) {
 				if gvk.Version != runtime.APIVersionInternal { // skip internal
-					versionedNew, err := legacyscheme.Scheme.New(gvk)
+					versionedNew, err := scheme.New(gvk)
 					if err != nil {
 						t.Fatal(err)
 					}
-					err = legacyscheme.Scheme.Convert(unversionedNew, versionedNew, nil)
+					err = scheme.Convert(unversionedNew, versionedNew, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
 
 					var versionedOld runtime.Object
 					if unversionedOld != nil {
-						versionedOld, err = legacyscheme.Scheme.New(gvk)
+						versionedOld, err = scheme.New(gvk)
 						if err != nil {
 							t.Fatal(err)
 						}
 
-						err = legacyscheme.Scheme.Convert(unversionedOld, versionedOld, nil)
+						err = scheme.Convert(unversionedOld, versionedOld, nil)
 						if err != nil {
 							t.Fatal(err)
 						}
 					}
 
-					fn(t, legacyscheme.Scheme.ValidateUpdate(options, versionedNew, versionedOld, subresources...))
+					fn(t, scheme.ValidateUpdate(options, versionedNew, versionedOld, subresources...))
 				}
 			})
 		}
