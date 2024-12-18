@@ -1,0 +1,7 @@
+{
+    "*subfield.T1": {
+      "ObjectMeta.name": [
+        "subfield T1.ObjectMeta.Name"
+      ]
+    }
+  }
