@@ -36,8 +36,6 @@ import (
 const (
 	tagName               = "k8s:validation-gen"
 	inputTagName          = "k8s:validation-gen-input"
-	enabledTagName        = "k8s:validation-gen-enabled-tags"
-	disabledTagName       = "k8s:validation-gen-disabled-tags"
 	schemeRegistryTagName = "k8s:validation-gen-scheme-registry" // defaults to k8s.io/apimachinery/pkg.runtime.Scheme
 	testFixtureTagName    = "k8s:validation-gen-test-fixture"    // if set, generate go test files for test fixtures.  Supported values: "validateFalse".
 )
@@ -55,11 +53,6 @@ func extractTag(comments []string) ([]string, bool) {
 
 func extractInputTag(comments []string) []string {
 	return gengo.ExtractCommentTags("+", comments)[inputTagName]
-}
-
-func extractFiltersTags(comments []string) (enabled, disabled []string) {
-	return gengo.ExtractCommentTags("+", comments)[enabledTagName],
-		gengo.ExtractCommentTags("+", comments)[disabledTagName]
 }
 
 func checkTag(comments []string, require ...string) bool {
@@ -202,8 +195,7 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 
 		pkg := context.Universe[input]
 
-		enabledTags, disabledTags := extractFiltersTags(pkg.Comments)
-		declarativeValidator := validators.NewValidator(context, enabledTags, disabledTags)
+		declarativeValidator := validators.NewValidator(context)
 		schemaRegistry := schemeRegistryTag(pkg)
 
 		typesWith, found := extractTag(pkg.Comments)

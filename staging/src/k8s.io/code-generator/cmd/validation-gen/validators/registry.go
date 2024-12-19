@@ -17,7 +17,6 @@ limitations under the License.
 package validators
 
 import (
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/gengo/v2/generator"
 	"k8s.io/gengo/v2/types"
 )
@@ -54,11 +53,10 @@ func (r *Registry) Add(validator DeclarativeValidatorInit) {
 	r.inits = append(r.inits, validator)
 }
 
-func NewValidator(c *generator.Context, enabledTags, disabledTags []string) DeclarativeValidator {
+func NewValidator(c *generator.Context) DeclarativeValidator {
 	composite := &compositeValidator{
-		validators:   make([]DeclarativeValidator, 0, len(registry.inits)),
-		enabledTags:  sets.New(enabledTags...),
-		disabledTags: sets.New(disabledTags...)}
+		validators: make([]DeclarativeValidator, 0, len(registry.inits)),
+	}
 	cfg := &ValidatorConfig{
 		GeneratorContext: c,
 		EmbedValidator:   composite,
@@ -70,8 +68,7 @@ func NewValidator(c *generator.Context, enabledTags, disabledTags []string) Decl
 }
 
 type compositeValidator struct {
-	validators                []DeclarativeValidator
-	enabledTags, disabledTags sets.Set[string]
+	validators []DeclarativeValidator
 }
 
 func (c *compositeValidator) ExtractValidations(t *types.Type, comments []string) (Validations, error) {
@@ -82,25 +79,13 @@ func (c *compositeValidator) ExtractValidations(t *types.Type, comments []string
 			return result, err
 		}
 		for _, f := range validationGen.Functions {
-			if c.allow(f.TagName()) {
-				result.Functions = append(result.Functions, f)
-			}
+			result.Functions = append(result.Functions, f)
 		}
 		for _, v := range validationGen.Variables {
-			if c.allow(v.TagName()) {
-				result.Variables = append(result.Variables, v)
-			}
+			result.Variables = append(result.Variables, v)
 		}
 	}
 	return result, nil
-}
-
-func (c *compositeValidator) allow(tagName string) bool {
-	if c.disabledTags.Has(tagName) {
-		return false
-	}
-
-	return len(c.enabledTags) == 0 || c.enabledTags.Has(tagName)
 }
 
 func (c *compositeValidator) Docs() []TagDoc {

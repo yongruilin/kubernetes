@@ -24,9 +24,6 @@ P0:
 - Fix subresources
   - "spec" and "status" are hard coded in generator, drive them off of a `+subresource=status` tag?
   - Do we need to do anything special for "scale"?
-- Do we really need enabled-tags and disabled-tags logic?  If so, document.
-  - rename "disabled-tags" to "disabled-tag" and document as repeated
-
 
 P1:
 - Consider adding flag-optional mutation checks along the way through the REST
