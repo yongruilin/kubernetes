@@ -17,20 +17,29 @@ limitations under the License.
 package validate
 
 import (
+	"net"
+
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	netutils "k8s.io/utils/net"
 )
 
-// IP verifies that the specified value is a valid IP address.
-func IP(opCtx operation.Context, fldPath *field.Path, value, _ *string) field.ErrorList {
+// IPSloppy verifies that the specified value is a valid IP address, but allows
+// leading zeros on each octet value.  This should not be used for new APIs.
+func IPSloppy(opCtx operation.Context, fldPath *field.Path, value, _ *string) field.ErrorList {
+	_, errs := ipSloppy(opCtx, fldPath, value, nil)
+	return errs
+}
+
+func ipSloppy(opCtx operation.Context, fldPath *field.Path, value, _ *string) (net.IP, field.ErrorList) {
 	if value == nil {
-		return nil
+		return nil, nil
 	}
-	if netutils.ParseIPSloppy(*value) == nil {
-		return field.ErrorList{
+	ip := netutils.ParseIPSloppy(*value)
+	if ip == nil {
+		return nil, field.ErrorList{
 			field.Invalid(fldPath, *value, "must be a valid IP address (e.g. 10.9.8.7 or 2001:db8::ffff)"),
 		}
 	}
-	return nil
+	return ip, nil
 }
