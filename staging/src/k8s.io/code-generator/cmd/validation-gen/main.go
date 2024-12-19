@@ -18,6 +18,7 @@ limitations under the License.
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"flag"
@@ -115,9 +116,13 @@ func printDocs() {
 		return cmp.Compare(a.Tag, b.Tag)
 	})
 
-	if jb, err := json.MarshalIndent(docs, "", "    "); err != nil {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "    ")
+	if err := encoder.Encode(docs); err != nil {
 		klog.Fatalf("failed to marshal docs: %v", err)
-	} else {
-		fmt.Println(string(jb))
 	}
+
+	fmt.Println(buf.String())
 }
