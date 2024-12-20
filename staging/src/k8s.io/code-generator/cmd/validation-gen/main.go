@@ -108,7 +108,7 @@ func printDocs() {
 	}
 
 	// This gets a composite validator which aggregates the many plugins.
-	validator := validators.NewValidator(c, nil, nil)
+	validator := validators.NewValidator(c)
 
 	docs := builtinTagDocs()
 	docs = append(docs, validator.Docs()...)
