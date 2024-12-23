@@ -28,8 +28,20 @@ import (
 )
 
 const (
-	requiredTagName  = "k8s:required"
+	// All of our tags are expressed from the perspective of a client of the
+	// API, but the code we generate is for the server. Optional is tricky.
+	//
+	// A field which is marked as optional and does not have a default is
+	// strictly optional. A client is allowed to not set it and the server will
+	// not give it a default value. Code which consumes it must handle that it
+	// might not have any value at all.
+	//
+	// A field which is marked as optional but has a default is optional to
+	// clients, but required to the server. A client is allowed to not set it
+	// but the server will give it a default value. Code which consumes it can
+	// assume that it always has a value.
 	optionalTagName  = "k8s:optional"
+	requiredTagName  = "k8s:required"
 	forbiddenTagName = "k8s:forbidden"
 	defaultTagName   = "default" // TODO: this should evenually be +k8s:default
 )
