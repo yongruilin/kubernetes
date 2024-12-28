@@ -122,6 +122,7 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 	}
 
 	var targets []generator.Target
+	var lintErrs []error
 
 	// First load other "input" packages.  We do this as a single call because
 	// it is MUCH faster.
@@ -259,6 +260,19 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 			}
 		}
 
+		l := newLinter()
+		for _, t := range rootTypes {
+			klog.V(4).InfoS("linting root-type", "type", t)
+			l.lintType(t)
+			if len(l.lintErrors) > 0 {
+				lintErrs = append(lintErrs, l.lintErrors...)
+			}
+		}
+		if args.Lint {
+			klog.V(4).Info("Lint is set, skip appending targets")
+			continue
+		}
+
 		targets = append(targets,
 			&generator.SimpleTarget{
 				PkgName:       pkg.Name,
@@ -285,6 +299,19 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 					return generators
 				},
 			})
+	}
+
+	if len(lintErrs) > 0 {
+		var lintErrsStr string
+		for _, err := range lintErrs {
+			lintErrsStr += fmt.Sprintf("\n%s", err.Error())
+		}
+		if args.Lint {
+			klog.Fatalf("failed to lint comments: %s", lintErrsStr)
+		} else {
+			klog.Warningf("failed to lint comments: %s", lintErrsStr)
+		}
+
 	}
 	return targets
 }
