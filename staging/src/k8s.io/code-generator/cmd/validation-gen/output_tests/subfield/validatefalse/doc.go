@@ -19,7 +19,7 @@ limitations under the License.
 // +k8s:validation-gen-test-fixture=validateFalse
 
 // Package subfield contains test types for testing subfield field validation tags.
-package subfield
+package validatefalse
 
 import "k8s.io/code-generator/cmd/validation-gen/testscheme"
 
