@@ -850,6 +850,16 @@ func (g *genValidations) emitValidationFunction(c *generator.Context, t *types.T
 	sw.Do("}\n\n", nil)
 }
 
+// emitNonIncludedTypeComment emits a comment explaining that the specified
+// type is not being generated for.
+func emitNonIncludedTypeComment(t *types.Type, sw *generator.SnippetWriter) {
+	targs := generator.Args{
+		"type": t,
+	}
+	sw.Do("// NOTE: Type $.type|raw$ is in a non-included package.\n", targs)
+	sw.Do("//       Any validations defined on this type are not available from here.\n", targs)
+}
+
 // emitValidationForChild emits code for the specified childNode, calling
 // type-attached validations and then descending into the type (e.g. struct
 // fields).
@@ -901,14 +911,49 @@ func (g *genValidations) emitValidationForChild(c *generator.Context, thisChild 
 				emitCallsToValidators(c, validations.Functions, bufsw)
 			}
 
+			// NOTE: while we don't know for sure that this field is a struct,
+			// we can trust that if it has subfieldValidations, it probably is.
+			// We have to do this here because we might be doing a subfield of
+			// a non-included type (where the node is nil).
+			for _, subchild := range fld.subfieldValidations {
+				if len(subchild.name) == 0 {
+					panic(fmt.Sprintf("missing child name for field in %v", thisNode))
+				}
+				if len(subchild.jsonName) == 0 {
+					panic(fmt.Sprintf("missing child JSON name for field %v.%s", thisNode, subchild.name))
+				}
+
+				leafType, typePfx, exprPfx := getLeafTypeAndPrefixes(subchild.childType)
+				targs := targs.WithArgs(generator.Args{
+					"inType":       fld.childType,
+					"fieldName":    subchild.name,
+					"fieldJSON":    subchild.jsonName,
+					"fieldType":    leafType,
+					"fieldTypePfx": typePfx,
+					"fieldExprPfx": exprPfx,
+				})
+				if fld.childType.Kind == types.Pointer {
+					targs["inType"] = fld.childType.Elem
+				}
+				bufsw.Do("// field $.inType|raw$.$.fieldName$\n", targs)
+				bufsw.Do("errs = append(errs,\n", targs)
+				bufsw.Do("  func(obj, oldObj $.fieldTypePfx$$.fieldType|raw$, fldPath *$.field.Path|raw$) (errs $.field.ErrorList|raw$) {\n", targs)
+
+				if subchild.fieldValidations.Empty() {
+					panic(fmt.Sprintf("found non-empty field validations in node.subfield for node: %v", subchild))
+				}
+
+				emitCallsToValidators(c, subchild.fieldValidations.Functions, bufsw)
+
+				bufsw.Do("    return\n", targs)
+				bufsw.Do("  }($.fieldExprPfx$obj.$.fieldName$, $.safe.Field|raw$(oldObj, func(oldObj *$.inType|raw$) $.fieldTypePfx$$.fieldType|raw$ { return $.fieldExprPfx$oldObj.$.fieldName$ }), fldPath.Child(\"$.fieldJSON$\"))...)\n", targs)
+				bufsw.Do("\n", nil)
+			}
+
 			// If the node is nil, this must be a type in a package we are not
 			// handling - it's effectively opaque to us.
 			if fld.node == nil {
-				targs := targs.WithArgs(generator.Args{
-					"fieldType": fld.childType,
-				})
-				bufsw.Do("// NOTE: Type $.fieldType|raw$ is in a non-included package.\n", targs)
-				bufsw.Do("//       Any validations defined on this type are not available from here.\n", targs)
+				emitNonIncludedTypeComment(fld.childType, bufsw)
 			} else {
 				// Get to the real type.
 				switch fld.node.valueType.Kind {
@@ -920,41 +965,6 @@ func (g *genValidations) emitValidationForChild(c *generator.Context, thisChild 
 				case types.Struct:
 					// Call the type's validation function.
 					g.emitCallToOtherTypeFunc(c, fld.node, bufsw)
-					for _, subchild := range fld.subfieldValidations {
-						if len(subchild.name) == 0 {
-							panic(fmt.Sprintf("missing child name for field in %v", thisNode))
-						}
-						if len(subchild.jsonName) == 0 {
-							panic(fmt.Sprintf("missing child JSON name for field %v.%s", thisNode, subchild.name))
-						}
-
-						leafType, typePfx, exprPfx := getLeafTypeAndPrefixes(subchild.childType)
-						targs := targs.WithArgs(generator.Args{
-							"inType":       fld.childType,
-							"fieldName":    subchild.name,
-							"fieldJSON":    subchild.jsonName,
-							"fieldType":    leafType,
-							"fieldTypePfx": typePfx,
-							"fieldExprPfx": exprPfx,
-						})
-						if fld.childType.Kind == types.Pointer {
-							targs["inType"] = fld.childType.Elem
-						}
-						bufsw.Do("// field $.inType|raw$.$.fieldName$\n", targs)
-						bufsw.Do("errs = append(errs,\n", targs)
-						bufsw.Do("  func(obj, oldObj $.fieldTypePfx$$.fieldType|raw$, fldPath *$.field.Path|raw$) (errs $.field.ErrorList|raw$) {\n", targs)
-
-						if subchild.fieldValidations.Empty() {
-							panic(fmt.Sprintf("found non-empty field validations in node.subfield for node: %v", subchild))
-						}
-
-						emitCallsToValidators(c, subchild.fieldValidations.Functions, bufsw)
-
-						bufsw.Do("    return\n", targs)
-						bufsw.Do("  }($.fieldExprPfx$obj.$.fieldName$, $.safe.Field|raw$(oldObj, func(oldObj *$.inType|raw$) $.fieldTypePfx$$.fieldType|raw$ { return $.fieldExprPfx$oldObj.$.fieldName$ }), fldPath.Child(\"$.fieldJSON$\"))...)\n", targs)
-						bufsw.Do("\n", nil)
-					}
-
 				default:
 					// Descend into this field.
 					g.emitValidationForChild(c, fld, bufsw)
@@ -1013,11 +1023,7 @@ func (g *genValidations) emitValidationForChild(c *generator.Context, thisChild 
 		// If the node is nil, this must be a type in a package we are not
 		// handling - it's effectively opaque to us.
 		if thisNode.elem.node == nil {
-			targs := targs.WithArgs(generator.Args{
-				"elemType": thisNode.elem.childType,
-			})
-			elemSW.Do("// NOTE: Type $.elemType|raw$ is in a non-included package.\n", targs)
-			elemSW.Do("//       Any validations defined on this type are not available from here.\n", targs)
+			emitNonIncludedTypeComment(thisNode.elem.childType, elemSW)
 		} else {
 			switch thisNode.elem.node.valueType.Kind {
 			case types.Struct, types.Alias:
@@ -1082,11 +1088,7 @@ func (g *genValidations) emitValidationForChild(c *generator.Context, thisChild 
 		// If the node is nil, this must be a type in a package we are not
 		// handling - it's effectively opaque to us.
 		if thisNode.key.node == nil {
-			targs := targs.WithArgs(generator.Args{
-				"keyType": thisNode.key.childType,
-			})
-			keySW.Do("// NOTE: Type $.keyType|raw$ is in a non-included package.\n", targs)
-			keySW.Do("//       Any validations defined on this type are not available from here.\n", targs)
+			emitNonIncludedTypeComment(thisNode.key.childType, keySW)
 		} else {
 			switch thisNode.key.node.valueType.Kind {
 			case types.Struct, types.Alias:
@@ -1115,11 +1117,7 @@ func (g *genValidations) emitValidationForChild(c *generator.Context, thisChild 
 		// If the node is nil, this must be a type in a package we are not
 		// handling - it's effectively opaque to us.
 		if thisNode.elem.node == nil {
-			targs := targs.WithArgs(generator.Args{
-				"valType": thisNode.elem.childType,
-			})
-			valSW.Do("// NOTE: Type $.valType|raw$ is in a non-included package.\n", targs)
-			valSW.Do("//       Any validations defined on this type are not available from here.\n", targs)
+			emitNonIncludedTypeComment(thisNode.elem.childType, valSW)
 		} else {
 			switch thisNode.elem.node.valueType.Kind {
 			case types.Struct, types.Alias:
