@@ -526,7 +526,6 @@ func (td *typeDiscoverer) discoverStruct(thisNode *typeNode, fldPath *field.Path
 		switch childType.Kind {
 		case types.Slice, types.Array:
 			// Extract any embedded list-validation rules.
-			//TODO: also support +k8s:eachVal
 			if validations, err := td.extractEmbeddedValidations(eachValTag, memb.CommentLines, childType.Elem); err != nil {
 				return fmt.Errorf("%v: %w", childPath.Key("vals"), err)
 			} else {
@@ -577,7 +576,6 @@ func (td *typeDiscoverer) discoverStruct(thisNode *typeNode, fldPath *field.Path
 			}
 		case types.Map:
 			// Extract any embedded key-validation rules.
-			//TODO: also support +k8s:eachKey
 			if validations, err := td.extractEmbeddedValidations(eachKeyTag, memb.CommentLines, childType.Key); err != nil {
 				return fmt.Errorf("%v: %w", childPath.Key("keys"), err)
 			} else {
@@ -590,7 +588,6 @@ func (td *typeDiscoverer) discoverStruct(thisNode *typeNode, fldPath *field.Path
 				}
 			}
 			// Extract any embedded val-validation rules.
-			//TODO: also support +k8s:eachVal
 			if validations, err := td.extractEmbeddedValidations(eachValTag, memb.CommentLines, childType.Elem); err != nil {
 				return fmt.Errorf("%v: %w", childPath.Key("vals"), err)
 			} else {
@@ -650,7 +647,6 @@ func (td *typeDiscoverer) discoverAlias(thisNode *typeNode, fldPath *field.Path)
 	switch underlying.Kind {
 	case types.Slice, types.Array:
 		// Extract any embedded list-validation rules.
-		//TODO: also support +k8s:eachVal
 		if validations, err := td.extractEmbeddedValidations(eachValTag, thisNode.valueType.CommentLines, underlying); err != nil {
 			return fmt.Errorf("%v: %w", fldPath.Key("vals"), err)
 		} else {
@@ -661,7 +657,6 @@ func (td *typeDiscoverer) discoverAlias(thisNode *typeNode, fldPath *field.Path)
 		}
 	case types.Map:
 		// Extract any embedded key-validation rules.
-		//TODO: also support +k8s:eachKey
 		if validations, err := td.extractEmbeddedValidations(eachKeyTag, thisNode.valueType.CommentLines, underlying); err != nil {
 			return fmt.Errorf("%v: %w", fldPath.Key("keys"), err)
 		} else {
@@ -671,7 +666,6 @@ func (td *typeDiscoverer) discoverAlias(thisNode *typeNode, fldPath *field.Path)
 			}
 		}
 		// Extract any embedded val-validation rules.
-		//TODO: also support +k8s:eachVal
 		if validations, err := td.extractEmbeddedValidations(eachValTag, thisNode.valueType.CommentLines, underlying); err != nil {
 			return fmt.Errorf("%v: %w", fldPath.Key("vals"), err)
 		} else {
