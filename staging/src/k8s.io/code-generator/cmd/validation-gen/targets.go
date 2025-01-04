@@ -197,7 +197,7 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 		pkg := context.Universe[input]
 
 		declarativeValidator := validators.NewValidator(context)
-		schemaRegistry := schemeRegistryTag(pkg)
+		schemeRegistry := schemeRegistryTag(pkg)
 
 		typesWith, found := extractTag(pkg.Comments)
 		if !found {
@@ -286,7 +286,7 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 
 				GeneratorsFunc: func(c *generator.Context) (generators []generator.Generator) {
 					generators = []generator.Generator{
-						NewGenValidations(args.OutputFile, pkg.Path, rootTypes, td, inputToPkg, declarativeValidator, schemaRegistry),
+						NewGenValidations(args.OutputFile, pkg.Path, rootTypes, td, inputToPkg, declarativeValidator, schemeRegistry),
 					}
 					testFixtureTags := testFixtureTag(pkg)
 					if testFixtureTags.Len() > 0 {
