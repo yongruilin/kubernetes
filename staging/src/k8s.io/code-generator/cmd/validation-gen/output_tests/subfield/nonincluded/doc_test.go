@@ -25,5 +25,5 @@ func TestSubfieldObjectMetaValidationWithValidateFalse(t *testing.T) {
 
 	st.Value(&T1{}).
 		// check for subfield +k8s:validateFalse validation on T1.ObjectMeta.Name
-		ExpectValidateFalse("subfield T1.ObjectMeta.Name")
+		ExpectValidateFalse("subfield T1.(other.StructType).StringField")
 }
