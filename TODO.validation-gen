@@ -1,38 +1,45 @@
-P0:
+P0 ("things we need to get done to get it merged upstream"):
 - How to deal with fields which are +optional and +default - they need a
-  required-check, but only on server-side, never client-side.
+  required-check, but only on server-side, never client-side. 
+   - For optional fields w/ defaults how do we want to handle this
+   - Are some items in strategies
+   - things we have declarative defaults, "implicit" defaults (zero value), and side-channel defaults
+   - maybe switch from Replication Controller as other field maybe doesn't need this resolved
 - Should defaults take +k8s:default?
+  - Adopted convention of prefix "+k8s:", do defaults also get "+k8s:"?
 - Validation logic for:
-    - format
-    - schema (maxLen, maxItems, ...)
-    - listMap key uniqueness and requiredness
-    - listMap key requiredness
-    - SMD/SSA validation (+listType, +listMapKey, +patchMergeKey, +patchStrategy)
-    - OpenAPI value validation
-      - Size limits (+min{Length,Properties,Items}, +max{Length,Properties,Items})
-      - Numeric limits (+minimum, +maximum, +exclusiveMinimum, +exclusiveMaximum)
-      - String formats (+format)
-    - metadata.name/generateName validation based on Object type
-    - label/annotation validations based on Object type
-    - cross field validations
-      - only validate obj.X if this validation passes
-      - if obj.X is value Y, then validate obj.Z
-    - IntOrString
+    - listMap key requiredness (no auto-fail if you have same list map key)
+      - defaulted keys (key in a list map must be required but can have a default.  If default, need to use that in X places. Related to default ordering)
     - immutable (update)
-    - field found in listfield Y (e.g. volume mount name)
-    - dependencies - field X is allowed IFF field Y
+- Convert 2-3 fields
+- Clearly documented recipe for doing the recipe
+  - Flow like prove X, make a change, then prove X again
+  - test throught strategy.go, validation.go, or both?
+  - ok to start process of moving up through strategy.go if it is cleaner?  Should be there already? Initial PR maybe don't do the move?
+- Squash and rebase the PR to prepare for upstream PR
+- Pick location for validator library
+  - k8s.io/apimachinery/pkg/util/validation introduces risk of drift if someone uses code-generator and a different rev of apimachinery
+
+
+P1:
+- Validation logic for:
+  - more format
+  - more schema
+- cross field validations
+  - only validate obj.X if this validation passes
+  - if obj.X is value Y, then validate obj.Z
+  - field found in listfield Y (e.g. volume mount name)
+  - dependencies - field X is allowed IFF field Y
+- label/annotation validations based on Object type
+- IntOrString
 - Fix subresources
   - "spec" and "status" are hard coded in generator, drive them off of a `+subresource=status` tag?
   - Do we need to do anything special for "scale"?
-
-P1:
 - Consider adding flag-optional mutation checks along the way through the REST
   stack (copy object, call strategy, diff).
 - Fix defaulting ordering vs manual
 - Conditional defaulting
 - Add CEL validation rules
-- Pick location for validator library
-  - k8s.io/apimachinery/pkg/util/validation introduces risk of drift if someone uses code-generator and a different rev of apimachinery
 - When calling a validation function in another pkg, we need to make sure it exists
   - by name convention + fingerprint
   - by explicit tag (e.g. // +validation-func-for=...
@@ -40,15 +47,12 @@ P1:
   - Decide how to implement
 - Stop using "+k8s:validation-gen=TypeMeta" to find root types?
   - Do we need something more flexible?
-- Stop generating validation for list types
 - Migrate core group to declarative validation
   - xref: Alex's WIP for jobs: https://github.com/alexzielenski/kubectl-validate/blob/jobset/jobset/patches/apis/jobset.x-k8s.io/v1alpha2.json
   - Enable declarative validation for strategies and test
-- Fix bug where generating apps API group enables enum generation on core API group
 - Error when calling eachVal on non-list types or ignore?
 - failure tests for error messages
 - Test for registration / init func
-- Generator unit tests need updating
 - We may need to nest "built-in" tags.
   - +eachVal=+subField(Foo)=+minimum=6
   - +subfield(Foo)=+eachField=+minimum=6
