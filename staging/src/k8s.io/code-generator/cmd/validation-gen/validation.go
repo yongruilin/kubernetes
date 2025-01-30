@@ -66,11 +66,11 @@ type genValidations struct {
 	imports             namer.ImportTracker
 	validator           validators.DeclarativeValidator
 	hasValidationsCache map[*typeNode]bool
-	schemaRegistry      types.Name
+	schemeRegistry      types.Name
 }
 
 // NewGenValidations cretes a new generator for the specified package.
-func NewGenValidations(outputFilename, outputPackage string, rootTypes []*types.Type, discovered *typeDiscoverer, inputToPkg map[string]string, validator validators.DeclarativeValidator, schemaRegistry types.Name) generator.Generator {
+func NewGenValidations(outputFilename, outputPackage string, rootTypes []*types.Type, discovered *typeDiscoverer, inputToPkg map[string]string, validator validators.DeclarativeValidator, schemeRegistry types.Name) generator.Generator {
 	return &genValidations{
 		GoGenerator: generator.GoGenerator{
 			OutputFilename: outputFilename,
@@ -82,7 +82,7 @@ func NewGenValidations(outputFilename, outputPackage string, rootTypes []*types.
 		imports:             generator.NewImportTrackerForPackage(outputPackage),
 		validator:           validator,
 		hasValidationsCache: map[*typeNode]bool{},
-		schemaRegistry:      schemaRegistry,
+		schemeRegistry:      schemeRegistry,
 	}
 }
 
@@ -129,7 +129,7 @@ func (g *genValidations) isOtherPackage(pkg string) bool {
 func (g *genValidations) Init(c *generator.Context, w io.Writer) error {
 	klog.V(5).Infof("emitting registration code")
 	sw := generator.NewSnippetWriter(w, c, "$", "$")
-	g.emitRegisterFunction(c, g.schemaRegistry, sw)
+	g.emitRegisterFunction(c, g.schemeRegistry, sw)
 	if err := sw.Error(); err != nil {
 		return err
 	}
