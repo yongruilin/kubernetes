@@ -1,0 +1,29 @@
+name: Gemini PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize] # Triggers on PR open and code updates
+
+jobs:
+  gemini_review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get PR diff
+        id: get_diff
+        run: |
+          echo "DIFF<<EOF" >> $GITHUB_OUTPUT
+          git diff HEAD~1..HEAD >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Basic Review (Placeholder)
+        run: |
+          echo "This is a placeholder for Gemini API integration."
+          echo "Diff: ${{ steps.get_diff.outputs.DIFF }}"
+
+      - name: Post Review Comment (Placeholder)
+        run: |
+          echo "This is a placeholder for posting a review comment."
