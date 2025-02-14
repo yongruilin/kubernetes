@@ -60,6 +60,7 @@ jobs:
           diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           review_text = ""
+          escaped_review = "" 
           try:
               review_text = generate_review(prompt)
 
