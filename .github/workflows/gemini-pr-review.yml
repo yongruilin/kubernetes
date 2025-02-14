@@ -62,15 +62,16 @@ jobs:
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           review_text = ""
           try:
-              print(f"REVIEW<<EOF") # Print the variable to stdout
               review_text = generate_review(prompt)
-              escaped_review = review_text.replace('\n', '\\n') # Escape newlines
-              print(f"{escaped_review}\nEOF")
           except Exception as e:
               print(f"Error generating review: {e}")
               traceback.print_exc()
-              escaped_review = f"An error occurred during Gemini review: {e}".replace('\n', '\\n')
-              print(f"{escaped_review}\nEOF")
+              review_text = f"An error occurred during Gemini review: {e}"
+
+          escaped_review = review_text.replace('\n', '\\n') # Escape newlines
+
+          print(f"REVIEW<<EOF") # Print the variable to stdout
+          print(f"{escaped_review}\nEOF")
 
           EOF
           exit 0
