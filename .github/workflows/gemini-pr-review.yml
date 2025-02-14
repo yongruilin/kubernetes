@@ -28,6 +28,9 @@ jobs:
           echo "DIFF<<EOF" >> $GITHUB_OUTPUT
           git diff origin/${{ github.event.pull_request.base.ref }} ${{ github.sha }} >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Debug diff output
+        run: echo "${{ steps.diff.outputs.DIFF }}"
 
       - name: Run Gemini review script
         env:
