@@ -32,6 +32,9 @@ jobs:
       - name: Debug diff output
         run: echo "${{ steps.diff.outputs.DIFF }}"
 
+      - name: Set DIFF environment variable
+        run: echo "INPUT_DIFF=${{ steps.diff.outputs.DIFF }}" >> $GITHUB_ENV
+
       - name: Run Gemini review script
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
