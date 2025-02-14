@@ -79,6 +79,18 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "60000"
 
+      - name: Set Default Text
+        id: default_text
+        run: |
+          echo "DEFAULT_TEXT=This is a default review comment." >> $GITHUB_OUTPUT
+      
+      - name: Post Default Review Comment
+        if: steps.default_text.outputs.DEFAULT_TEXT!= ''
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.default_text.outputs.DEFAULT_TEXT }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
       - name: Post Review Comment
         if: steps.gemini_review_call.outputs.REVIEW!= ''
         run: |
