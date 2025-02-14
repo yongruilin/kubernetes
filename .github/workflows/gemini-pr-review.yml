@@ -79,7 +79,13 @@ jobs:
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "60000"
 
       - name: Post Review Comment
+        if: steps.gemini_review_call.outputs.REVIEW!= ''
         run: |
           gh pr comment ${{ github.event.pull_request.number }} --body "$(echo "${{ steps.gemini_review_call.outputs.REVIEW }}" | sed 's/\\n/\n/g')"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Empty review message
+        if: steps.gemini_review_call.outputs.REVIEW == ''
+        run: |
+          echo "Gemini review was empty, no comment posted"
