@@ -53,7 +53,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Post Review Comment (Placeholder)
+      - name: Post Review Comment
         run: |
-          echo "This is a placeholder for posting a review comment."
-          echo "Gemini Review: ${{ steps.gemini_review_call.outputs.REVIEW }}"
+          gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review_call.outputs.REVIEW }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
