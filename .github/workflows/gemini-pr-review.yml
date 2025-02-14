@@ -2,7 +2,7 @@ name: Gemini PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize] # Triggers on PR open and code updates
+    types: [opened, synchronize]
 
 jobs:
   gemini_review:
@@ -17,12 +17,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9' # Or your preferred version
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-generativeai
           pip install google-generativeai tenacity
 
       - name: Get PR diff (Base64 Encode)
@@ -31,7 +30,7 @@ jobs:
           git fetch origin ${{ github.event.pull_request.base.ref }}
           diff=$(git diff origin/${{ github.event.pull_request.base.ref }} HEAD)
           encoded_diff=$(echo "$diff" | base64)
-          echo "$encoded_diff" > diff.b64 
+          echo "$encoded_diff" > diff.b64
 
       - name: Gemini API Call
         id: gemini_review_call
@@ -61,7 +60,6 @@ jobs:
           diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           review_text = ""
-
           try:
               review_text = generate_review(prompt)
 
@@ -80,12 +78,15 @@ jobs:
 
           EOF
           exit 0
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
 
       - name: Set Default Text
         id: default_text
         run: |
           echo "DEFAULT_TEXT=This is a default review comment." >> $GITHUB_OUTPUT
-      
+
       - name: Post Default Review Comment
         if: steps.default_text.outputs.DEFAULT_TEXT!= ''
         run: |
@@ -96,14 +97,14 @@ jobs:
       - name: Print Raw Review Output
         run: |
           echo "Raw Review Output: ${{ steps.gemini_review_call.outputs.REVIEW }}"
-          
+
       - name: Post Review Comment
         if: steps.gemini_review_call.outputs.REVIEW!= ''
         run: |
           gh pr comment ${{ github.event.pull_request.number }} --body "$(echo "${{ steps.gemini_review_call.outputs.REVIEW }}" | sed 's/\\n/\n/g')"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Empty review message
         if: steps.gemini_review_call.outputs.REVIEW == ''
         run: |
