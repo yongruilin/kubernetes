@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-generativeai tenacity
+          pip install google-generativeai tenacity unidiff
 
       - name: Get PR diff (Base64 Encode)
         id: get_diff
@@ -42,6 +42,7 @@ jobs:
           from tenacity import retry, stop_after_attempt, wait_fixed
           import traceback
           import time
+          from unidiff import PatchSet
 
           genai.configure(api_key=os.environ['GEMINI_API_KEY'])
           model = genai.GenerativeModel('gemini-pro')
@@ -58,51 +59,30 @@ jobs:
           with open('diff.b64', 'r') as f:
               diff_base64 = f.read().strip()
           diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
-          prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
-          review_text = ""
-          escaped_review = ""
-          try:
-              review_text = generate_review(prompt)
 
-              # Set the REVIEW output correctly
-              escaped_review = review_text.replace('\n', '\\n')
-              print(f"::set-output name=REVIEW::{escaped_review}")
-
-          except Exception as e:
-              print(f"Error generating review: {e}")
-              traceback.print_exc()
-              # Set the REVIEW output with the error message
-              escaped_review = f"An error occurred during Gemini review: {e}".replace('\n', '\\n')
-              print(f"::set-output name=REVIEW::{escaped_review}")
+          patch_set = PatchSet(diff_decoded)
+          for patched_file in patch_set:
+              for hunk in patched_file:
+                  for line in hunk:
+                      if line.is_added or line.is_removed or line.is_context:
+                          prompt = f"Review this line of code for potential issues and provide feedback:\n\n```\n{line.line_no} {line.action} {line.value}\n```"
+                          try:
+                              review_text = generate_review(prompt)
+                              # Use GitHub's API to post a comment on this specific line
+                              gh pr review ${{ github.event.pull_request.number }} \
+                                  --comment-at "${{ patched_file.path }}:{line.line_no}" \
+                                  --body "$review_text"
+                          except Exception as e:
+                              print(f"Error generating review: {e}")
+                              traceback.print_exc()
+                              # Consider logging the error or posting a general comment about the failure
 
           EOF
           exit 0
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
-
-      - name: Set Default Text
-        id: default_text
-        run: |
-          echo "DEFAULT_TEXT=This is a default review comment." >> $GITHUB_OUTPUT
-
-      - name: Post Default Review Comment
-        if: steps.default_text.outputs.DEFAULT_TEXT!= ''
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.default_text.outputs.DEFAULT_TEXT }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Print Raw Review Output
-        run: |
-          echo "Raw Review Output: ${{ steps.gemini_review_call.outputs.REVIEW }}"
-
-      - name: Post Review Comment
-        if: steps.gemini_review_call.outputs.REVIEW!= ''
-        run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "$(echo "${{ steps.gemini_review_call.outputs.REVIEW }}" | sed 's/\\n/\n/g')"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Empty review message
         if: steps.gemini_review_call.outputs.REVIEW == ''
