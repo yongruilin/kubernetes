@@ -27,7 +27,6 @@ jobs:
       - name: Get PR diff
         id: get_diff
         run: |
-          git fetch --depth=5
           echo "DIFF<<EOF" >> $GITHUB_OUTPUT
           git diff HEAD~1..HEAD >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
