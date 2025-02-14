@@ -24,13 +24,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-generativeai
 
-      - name: Get PR diff
+      - name: Get PR diff (Base64 Encode)
         id: get_diff
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           diff=$(git diff origin/${{ github.event.pull_request.base.ref }} HEAD)
           encoded_diff=$(echo "$diff" | base64)
-          echo "DIFF=$encoded_diff" >> $GITHUB_OUTPUT
+          echo "$encoded_diff" > diff.b64 
 
       - name: Gemini API Call
         id: gemini_review_call
@@ -38,15 +38,14 @@ jobs:
           python <<EOF
           import os
           import google.generativeai as genai
-
+          import base64
           genai.configure(api_key=os.environ['GEMINI_API_KEY'])
-
           model = genai.GenerativeModel('gemini-pro')
-          diff_base64 = "${{ steps.get_diff.outputs.DIFF }}"
+          with open('diff.b64', 'r') as f:
+              diff_base64 = f.read().strip()
           diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           response = model.generate_content(prompt)
-
           print(f"REVIEW<<EOF")
           print(response.text)
           print(f"EOF")
