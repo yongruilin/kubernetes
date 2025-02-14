@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-generativeai tenacity unidiff
+          pip install google-generativeai tenacity unidiff ghapi
 
       - name: Get PR diff (Base64 Encode)
         id: get_diff
@@ -32,21 +32,22 @@ jobs:
           encoded_diff=$(echo "$diff" | base64)
           echo "$encoded_diff" > diff.b64
 
-      - name: Gemini API Call
+      - name: Gemini API Call and GitHub Comment
         id: gemini_review_call
         run: |
           python <<EOF
           import os
-          import shlex
           import google.generativeai as genai
           import base64
           from tenacity import retry, stop_after_attempt, wait_fixed
           import traceback
           import time
           from unidiff import PatchSet
+          from ghapi.all import GhApi
 
           genai.configure(api_key=os.environ['GEMINI_API_KEY'])
           model = genai.GenerativeModel('gemini-pro')
+          gh = GhApi(owner=os.environ['GITHUB_REPOSITORY'].split('/')[0], repo=os.environ['GITHUB_REPOSITORY'].split('/')[1], token=os.environ['GH_TOKEN'])
 
           @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
           def generate_review(prompt):
@@ -73,15 +74,18 @@ jobs:
                           try:
                               review_text = generate_review(prompt)
                               if line_no is not None and isinstance(line_no, int) and patched_file.path and review_text and line.value:
-                                  # Construct the full command as a single string
-                                  command = f"gh pr review ${{ github.event.pull_request.number }} --comment '{patched_file.path}:{line_no}' --body '{review_text}'"
+                                  try:
+                                      gh.pulls.create_review_comment(
+                                          pull_number=int(os.environ['GITHUB_EVENT_PULL_REQUEST_NUMBER']),
+                                          body=review_text,
+                                          path=patched_file.path,
+                                          line=line_no,
+                                      )
+                                      print(f"Comment posted on {patched_file.path}:{line_no}")
+                                  except Exception as gh_err:
+                                      print(f"GitHub API error: {gh_err}")
+                                      traceback.print_exc()
 
-                                  # Escape any special characters in the command
-                                  escaped_command = shlex.quote(command)
-
-                                  # Execute the command using os.system
-                                  print(f"Debug: Final Escaped Command: {escaped_command}")
-                                  os.system(escaped_command)
                               else:
                                   print(f"Skipping comment due to invalid data: line_no={line_no}, path={patched_file.path}, review_text={review_text}, line.value = {line.value}")
 
@@ -90,13 +94,14 @@ jobs:
                               traceback.print_exc()
 
           EOF
-          exit 0
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
 
       - name: Empty review message
         if: steps.gemini_review_call.outputs.REVIEW == ''
         run: |
-          echo "Gemini review was empty, no comment posted"
+          echo "Gemini review was empty, or no comments were posted"
