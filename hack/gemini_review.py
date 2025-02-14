@@ -3,9 +3,16 @@ import os
 from github import Github
 
 def get_pr_diff():
-    """Retrieves and cleans the PR diff from environment variables."""
-    diff = os.environ.get('INPUT_DIFF') or ""
-    return diff.replace("DIFF<<EOF", "").replace("EOF", "").strip()
+    """Retrieves, base64 decodes, and cleans the PR diff from environment variables."""
+    encoded_diff = os.environ.get('INPUT_DIFF') or ""
+    try:
+        decoded_diff = base64.b64decode(encoded_diff).decode('utf-8')
+    except Exception as e:
+        print(f"Error decoding base64: {e}")
+        return "" #Return empty string on error.
+
+    cleaned_diff = decoded_diff.replace("DIFF<<EOF", "").replace("EOF", "").strip()
+    return cleaned_diff
 
 def generate_gemini_review(diff, api_key):
     """Generates a code review using the Gemini API."""
