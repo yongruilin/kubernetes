@@ -32,8 +32,13 @@ jobs:
       - name: Debug diff output
         run: echo "${{ steps.diff.outputs.DIFF }}"
 
-      - name: Base64 encode DIFF
-        run: echo "INPUT_DIFF=$(echo "${{ steps.diff.outputs.DIFF }}" | base64)" >> $GITHUB_ENV
+      - name: Base64 encode and set DIFF environment variable
+        run: |
+          DELIMITER=$(openssl rand -hex 8)
+          ENCODED_DIFF=$(echo "${{ steps.diff.outputs.DIFF }}" | base64)
+          echo "INPUT_DIFF<<$DELIMITER" >> $GITHUB_ENV
+          echo "$ENCODED_DIFF" >> $GITHUB_ENV
+          echo "$DELIMITER" >> $GITHUB_ENV
 
       - name: Run Gemini review script
         env:
