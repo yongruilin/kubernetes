@@ -23,6 +23,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install google-generativeai
+          pip install google-generativeai tenacity
 
       - name: Get PR diff (Base64 Encode)
         id: get_diff
