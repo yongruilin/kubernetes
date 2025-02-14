@@ -37,7 +37,30 @@ jobs:
         id: gemini_review_call
         run: |
           python <<EOF
-          #... (rest of the script)
+          import os
+          import google.generativeai as genai
+          import base64
+          from tenacity import retry, stop_after_attempt, wait_fixed
+          import traceback
+          import time
+
+          genai.configure(api_key=os.environ['GEMINI_API_KEY'])
+          model = genai.GenerativeModel('gemini-pro')
+
+          @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
+          def generate_review(prompt):
+              print("Starting Gemini API call...")
+              start_time = time.time()
+              response = model.generate_content(prompt)
+              end_time = time.time()
+              print(f"Gemini API call completed in {end_time - start_time:.2f} seconds.")
+              return response.text
+
+          with open('diff.b64', 'r') as f:
+              diff_base64 = f.read().strip()
+          diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
+          prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
+          review_text = ""
 
           try:
               review_text = generate_review(prompt)
