@@ -60,22 +60,20 @@ jobs:
           diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           review_text = ""
-          escaped_review = "" 
+          escaped_review = ""
           try:
               review_text = generate_review(prompt)
 
-              # Print the REVIEW output here
-              print(f"REVIEW<<EOF")
+              # Set the REVIEW output correctly
               escaped_review = review_text.replace('\n', '\\n')
-              print(f"{escaped_review}\nEOF")
+              print(f"::set-output name=REVIEW::{escaped_review}")
 
           except Exception as e:
               print(f"Error generating review: {e}")
               traceback.print_exc()
-              # Print the REVIEW output with the error message
-              print(f"REVIEW<<EOF")
+              # Set the REVIEW output with the error message
               escaped_review = f"An error occurred during Gemini review: {e}".replace('\n', '\\n')
-              print(f"{escaped_review}\nEOF")
+              print(f"::set-output name=REVIEW::{escaped_review}")
 
           EOF
           exit 0
