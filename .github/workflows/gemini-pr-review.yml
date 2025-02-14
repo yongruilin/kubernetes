@@ -77,7 +77,7 @@ jobs:
           exit 0
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "60000"
+          GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
 
       - name: Set Default Text
         id: default_text
