@@ -70,11 +70,10 @@ jobs:
 
           escaped_review = review_text.replace('\n', '\\n') # Escape newlines
 
-          print(f"REVIEW<<EOF")
-          print(escaped_review)
-          print(f"EOF")
+          output = f"REVIEW<<EOF\n{escaped_review}\nEOF" # Capture output in a variable
+          print(output) # Print the variable to stdout
           EOF
-          exit 0 # Force successful exit code
+          exit 0
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "60000"
