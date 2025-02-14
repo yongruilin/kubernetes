@@ -37,47 +37,26 @@ jobs:
         id: gemini_review_call
         run: |
           python <<EOF
-          import os
-          import google.generativeai as genai
-          import base64
-          from tenacity import retry, stop_after_attempt, wait_fixed
-          import traceback
-          import time
+          #... (rest of the script)
 
-          genai.configure(api_key=os.environ['GEMINI_API_KEY'])
-          model = genai.GenerativeModel('gemini-pro')
-
-          @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
-          def generate_review(prompt):
-              print("Starting Gemini API call...")
-              start_time = time.time()
-              response = model.generate_content(prompt)
-              end_time = time.time()
-              print(f"Gemini API call completed in {end_time - start_time:.2f} seconds.")
-              return response.text
-
-          with open('diff.b64', 'r') as f:
-              diff_base64 = f.read().strip()
-          diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
-          prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
-          review_text = ""
           try:
               review_text = generate_review(prompt)
+
+              # Print the REVIEW output here
+              print(f"REVIEW<<EOF")
+              escaped_review = review_text.replace('\n', '\\n')
+              print(f"{escaped_review}\nEOF")
+
           except Exception as e:
               print(f"Error generating review: {e}")
               traceback.print_exc()
-              review_text = f"An error occurred during Gemini review: {e}"
-
-          escaped_review = review_text.replace('\n', '\\n') # Escape newlines
-
-          print(f"REVIEW<<EOF") # Print the variable to stdout
-          print(f"{escaped_review}\nEOF")
+              # Print the REVIEW output with the error message
+              print(f"REVIEW<<EOF")
+              escaped_review = f"An error occurred during Gemini review: {e}".replace('\n', '\\n')
+              print(f"{escaped_review}\nEOF")
 
           EOF
           exit 0
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
 
       - name: Set Default Text
         id: default_text
