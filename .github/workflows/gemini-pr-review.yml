@@ -65,12 +65,13 @@ jobs:
               for hunk in patched_file:
                   for line in hunk:
                       if line.is_added or line.is_removed or line.is_context:
-                          prompt = f"Review this line of code for potential issues and provide feedback:\n\n```\n{line.line_no} {line.action} {line.value}\n```"
+                          line_no = line.target_line_no if line.is_added else line.source_line_no
+                          prompt = f"Review this line of code for potential issues and provide feedback:\n\n```\n{line_no} {line.action} {line.value}\n```"
                           try:
                               review_text = generate_review(prompt)
                               # Use GitHub's API to post a comment on this specific line
                               os.system(f"gh pr review ${{ github.event.pull_request.number }} \
-                                  --comment-at \"{patched_file.path}:{line.line_no}\" \
+                                  --comment-at \"{patched_file.path}:{line_no}\" \
                                   --body \"{review_text}\"")
                           except Exception as e:
                               print(f"Error generating review: {e}")
@@ -83,7 +84,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GRPC_GO_KEEP_ALIVE_TIMEOUT_MS: "600000"
-
+          
       - name: Empty review message
         if: steps.gemini_review_call.outputs.REVIEW == ''
         run: |
