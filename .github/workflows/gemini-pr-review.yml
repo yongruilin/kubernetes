@@ -41,8 +41,9 @@ jobs:
           genai.configure(api_key=os.environ['GEMINI_API_KEY'])
 
           model = genai.GenerativeModel('gemini-pro')
-          diff_output = "${{ steps.get_diff.outputs.DIFF }}"
-          prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_output}"
+          diff_base64 = "${{ steps.get_diff.outputs.DIFF }}"
+          diff_decoded = base64.b64decode(diff_base64).decode('utf-8')
+          prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           response = model.generate_content(prompt)
 
           print(f"REVIEW<<EOF")
