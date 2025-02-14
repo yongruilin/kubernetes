@@ -27,9 +27,10 @@ jobs:
       - name: Get PR diff
         id: get_diff
         run: |
-          echo "DIFF<<EOF" >> $GITHUB_OUTPUT
-          git diff HEAD~1..HEAD >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          diff=$(git diff origin/${{ github.event.pull_request.base.ref }} HEAD)
+          encoded_diff=$(echo "$diff" | base64)
+          echo "DIFF=$encoded_diff" >> $GITHUB_OUTPUT
 
       - name: Gemini API Call
         id: gemini_review_call
