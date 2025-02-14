@@ -41,11 +41,12 @@ jobs:
           import google.generativeai as genai
           import base64
           from tenacity import retry, stop_after_attempt, wait_fixed
+          import traceback
 
           genai.configure(api_key=os.environ['GEMINI_API_KEY'])
           model = genai.GenerativeModel('gemini-pro')
 
-          @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))  # Retry 3 times, wait 5 seconds between retries
+          @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
           def generate_review(prompt):
               response = model.generate_content(prompt)
               return response.text
@@ -56,12 +57,19 @@ jobs:
           prompt = f"Review this code diff for potential issues and provide feedback:\n\n{diff_decoded}"
           try:
               review_text = generate_review(prompt)
-              print(f"REVIEW<<EOF")
-              print(review_text)
-              print(f"EOF")
+              if review_text:
+                  print(f"REVIEW<<EOF")
+                  print(review_text)
+                  print(f"EOF")
+              else:
+                  print(f"REVIEW<<EOF")
+                  print(f"Gemini API returned an empty response.")
+                  print(f"EOF")
+
           except Exception as e:
               print(f"REVIEW<<EOF")
               print(f"Error generating review: {e}")
+              traceback.print_exc()
               print(f"EOF")
           EOF
         env:
