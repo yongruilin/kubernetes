@@ -70,7 +70,7 @@ jobs:
                               review_text = generate_review(prompt)
                               # Use GitHub's API to post a comment on this specific line
                               gh pr review ${{ github.event.pull_request.number }} \
-                                  --comment-at "${{ patched_file.path }}:{line.line_no}" \
+                                  --comment-at "{patched_file.path}:{line.line_no}" \
                                   --body "$review_text"
                           except Exception as e:
                               print(f"Error generating review: {e}")
