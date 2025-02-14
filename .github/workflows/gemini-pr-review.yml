@@ -90,6 +90,10 @@ jobs:
           gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.default_text.outputs.DEFAULT_TEXT }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Print Raw Review Output
+        run: |
+          echo "Raw Review Output: ${{ steps.gemini_review_call.outputs.REVIEW }}"
           
       - name: Post Review Comment
         if: steps.gemini_review_call.outputs.REVIEW!= ''
