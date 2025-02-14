@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import os
 from github import Github
+import base64
 
 def get_pr_diff():
     """Retrieves, base64 decodes, and cleans the PR diff from environment variables."""
