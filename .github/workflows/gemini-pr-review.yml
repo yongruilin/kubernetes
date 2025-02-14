@@ -68,10 +68,11 @@ jobs:
               traceback.print_exc()
               review_text = f"An error occurred during Gemini review: {e}"
 
-          print(f"REVIEW<<EOF")
-          print(review_text)
-          print(f"EOF")
+          escaped_review = review_text.replace('\n', '\\n') # Escape newlines
 
+          print(f"REVIEW<<EOF")
+          print(escaped_review)
+          print(f"EOF")
           EOF
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -79,6 +80,6 @@ jobs:
 
       - name: Post Review Comment
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "${{ steps.gemini_review_call.outputs.REVIEW }}"
+          gh pr comment ${{ github.event.pull_request.number }} --body "$(echo "${{ steps.gemini_review_call.outputs.REVIEW }}" | sed 's/\\n/\n/g')"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
