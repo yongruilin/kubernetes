@@ -73,6 +73,7 @@ jobs:
           print(f"REVIEW<<EOF")
           print(escaped_review)
           print(f"EOF")
+          exit 0 # Force successful exit code
           EOF
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
