@@ -27,7 +27,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-         gh pr diff ${{ github.event.pull_request.number }} > diff.txt
+         gh pr diff ${{ github.event.pull_request.number }} | sed '1,8d' > diff.txt  # Remove the first 8 lines
          echo "DIFF=$(cat diff.txt)" >> $GITHUB_OUTPUT
       
       - name: Debug diff output
