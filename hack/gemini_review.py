@@ -2,13 +2,27 @@ import google.generativeai as genai
 import os
 from github import Github
 
-def get_pr_diff(repo_name, pr_number, github_token):
-    """Retrieves and cleans the PR diff using PyGithub."""
+def get_pr_latest_commit_diff(repo_name, pr_number, github_token):
+    """Retrieves and cleans the diff from the latest commit of a PR."""
     g = Github(github_token)
     repo = g.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
-    diff = pr.get_commits().files.patch  # Get diff from the latest commit
-    return diff
+
+    try:
+        commits = list(pr.get_commits())  # Get all commits in the PR
+        if commits:
+            latest_commit = commits[-1]  # Get the latest commit
+            files = latest_commit.files
+            combined_diff = ""
+            for file in files:
+                if file.patch:
+                    combined_diff += file.patch + "\n"
+            return combined_diff
+        else:
+            return None  # No commits in the PR
+    except Exception as e:
+        print(f"Error getting diff from latest commit: {e}")
+        return None
 
 def generate_gemini_review(diff, api_key):
     """Generates a code review using the Gemini API."""
