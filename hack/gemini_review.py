@@ -3,7 +3,7 @@ import os
 from github import Github
 
 def get_pr_latest_commit_diff(repo_name, pr_number, github_token):
-    """Retrieves and cleans the diff from the latest commit of a PR."""
+    """Retrieves and cleans the diff from the latest commit of a PR, excluding test files."""
     g = Github(github_token)
     repo = g.get_repo(repo_name)
     pr = repo.get_pull(pr_number)
@@ -15,8 +15,10 @@ def get_pr_latest_commit_diff(repo_name, pr_number, github_token):
             files = latest_commit.files
             combined_diff = ""
             for file in files:
-                if file.patch:
-                    combined_diff += file.patch + "\n"
+                # Exclude test files (adjust the condition as needed)
+                if not file.filename.endswith("_test.go") and not file.filename.endswith("_test.py") and not "/test/" in file.filename:
+                    if file.patch:
+                        combined_diff += file.patch + "\n"
             return combined_diff
         else:
             return None  # No commits in the PR
@@ -28,6 +30,11 @@ def generate_gemini_review(diff, api_key):
     """Generates a code review using the Gemini API."""
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-pro')
+
+    max_diff_length = 20000  # Example limit (adjust based on token count)
+    if len(diff) > max_diff_length:
+        diff = diff[:max_diff_length]
+        diff += "\n... (truncated due to length limit) ..."
 
     prompt = f"""
     Review the following code diff and provide feedback. Point out potential issues,
@@ -55,7 +62,7 @@ def main():
     repo_name = os.environ.get('GITHUB_REPOSITORY')
     github_token = os.environ.get('GITHUB_TOKEN')
 
-    diff = get_pr_latest_commit_diff(repo_name, pr_number, github_token) # get diff from latest commit
+    diff = get_pr_latest_commit_diff(repo_name, pr_number, github_token)
 
     if diff is None:
         print("Failed to retrieve PR diff from latest commit. Exiting.")
