@@ -60,7 +60,7 @@ def post_github_review_comments(repo_name, pr_number, diff_file, review_comment,
         if not commits:
             print(f"WARNING: No commits found for PR {pr_number}. Posting general issue comment for {diff_file.filename}.")
             pr.create_issue_comment(f"Review for {diff_file.filename}:\n{review_comment}")
-            return  # Exit the function
+            return
 
         latest_commit = commits[-1]
 
@@ -72,19 +72,18 @@ def post_github_review_comments(repo_name, pr_number, diff_file, review_comment,
                     line_num = int(line.lower().split("line")[1].split(":")[0].strip())
                     lines_to_comment.append(line_num)
                 except ValueError:
-                    continue  # Skip lines that don't have a valid line number
+                    continue
 
         if lines_to_comment:
             for line_num in lines_to_comment:
                 try:
-                    pr.create_review_comment(body=review_comment, commit=latest_commit, path=diff_file.filename, position=line_num)
+                    pr.create_review_comment(body=review_comment, commit=latest_commit, path=diff_file.filename, line=line_num, side="RIGHT")
                 except Exception as e:
                     print(f"ERROR: Failed to create review comment for line {line_num} in {diff_file.filename}: {e}")
             print(f"Review comments for {diff_file.filename} posted successfully.")
         else:
             pr.create_issue_comment(f"Review for {diff_file.filename}:\n{review_comment}")
             print(f"Review for {diff_file.filename} posted as general comment since no line number was found.")
-
     else:
         print(f"Gemini API returned no response for {diff_file.filename}.")
 
