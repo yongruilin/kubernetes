@@ -56,6 +56,14 @@ def post_github_review_comments(repo_name, pr_number, diff_file, review_comment,
     pr = repo.get_pull(pr_number)
 
     if review_comment:
+        commits = list(pr.get_commits())
+        if not commits:
+            print(f"WARNING: No commits found for PR {pr_number}. Posting general issue comment for {diff_file.filename}.")
+            pr.create_issue_comment(f"Review for {diff_file.filename}:\n{review_comment}")
+            return  # Exit the function
+
+        latest_commit = commits[-1]
+
         # Parse the review comment for line number annotations
         lines_to_comment = []
         for line in review_comment.split('\n'):
@@ -68,7 +76,10 @@ def post_github_review_comments(repo_name, pr_number, diff_file, review_comment,
 
         if lines_to_comment:
             for line_num in lines_to_comment:
-                pr.create_review_comment(body=review_comment, commit=pr.get_commits()[-1], path=diff_file.filename, position=line_num)
+                try:
+                    pr.create_review_comment(body=review_comment, commit=latest_commit, path=diff_file.filename, position=line_num)
+                except Exception as e:
+                    print(f"ERROR: Failed to create review comment for line {line_num} in {diff_file.filename}: {e}")
             print(f"Review comments for {diff_file.filename} posted successfully.")
         else:
             pr.create_issue_comment(f"Review for {diff_file.filename}:\n{review_comment}")
