@@ -55,7 +55,11 @@ def main():
     repo_name = os.environ.get('GITHUB_REPOSITORY')
     github_token = os.environ.get('GITHUB_TOKEN')
 
-    diff = get_pr_diff(repo_name, pr_number, github_token)  # Get diff directly
+    diff = get_pr_latest_commit_diff(repo_name, pr_number, github_token) # get diff from latest commit
+
+    if diff is None:
+        print("Failed to retrieve PR diff from latest commit. Exiting.")
+        return
 
     review_comment = generate_gemini_review(diff, api_key)
 
