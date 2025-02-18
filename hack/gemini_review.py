@@ -140,7 +140,7 @@ def main():
     github_token = os.environ.get('GITHUB_TOKEN')
 
     # Use the GCS client library
-    guidelines = download_and_combine_guidelines("hackathon-sme-code-review-train", "guidelines/")
+    guidelines = download_and_combine_guidelines("hackathon-2025-sme-code-review-train", "guidelines/")
     if not guidelines:
         print("Warning: No guidelines loaded.  Review will proceed without guidelines.")
 
@@ -150,7 +150,7 @@ def main():
         print("Failed to retrieve PR diff files from latest commit. Exiting.")
         return
 
-    pr_comments = download_and_combine_pr_comments("hackathon-sme-code-review-train", "pr_comments/")
+    pr_comments = download_and_combine_pr_comments("hackathon-2025-sme-code-review-train", "pr_comments/")
     if not pr_comments:
         print("Warning: No PR comments loaded. Review will proceed without PR comments history.")
 
