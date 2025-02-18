@@ -1,6 +1,8 @@
 import google.generativeai as genai
 import os
 from github import Github
+import re
+from google.cloud import storage
 
 def get_pr_latest_commit_diff_files(repo_name, pr_number, github_token):
     """Retrieves diff information for each file in the latest commit of a PR, excluding test files."""
@@ -25,8 +27,25 @@ def get_pr_latest_commit_diff_files(repo_name, pr_number, github_token):
         print(f"Error getting diff files from latest commit: {e}")
         return None
 
-def generate_gemini_review_with_annotations(diff_file, api_key):
-    """Generates a code review with annotations for a single file using the Gemini API."""
+def download_and_combine_guidelines(bucket_name, prefix):
+    """Downloads markdown files from GCS using the google-cloud-storage library."""
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blobs = bucket.list_blobs(prefix=prefix)  # Use prefix for efficiency
+
+        guidelines_content = ""
+        for blob in blobs:
+            if blob.name.endswith(".md"):
+                guidelines_content += blob.download_as_text() + "\n\n"
+        return guidelines_content
+
+    except Exception as e:
+        print(f"Error downloading or combining guidelines: {e}")
+        return ""
+
+def generate_gemini_review_with_annotations(diff_file, api_key, guidelines):
+    """Generates a code review with annotations, incorporating guidelines."""
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-pro')
 
@@ -37,6 +56,10 @@ def generate_gemini_review_with_annotations(diff_file, api_key):
         diff += "\n... (truncated due to length limit) ..."
 
     prompt = f"""
+    The following are the API review guidelines:
+
+    {guidelines}
+
     Review the following code diff from file `{diff_file.filename}` and provide feedback.
     Point out potential issues, suggest improvements, and highlight good practices.
     For each issue or suggestion, specify the line numbers from the diff where the change occurs.
@@ -94,6 +117,11 @@ def main():
     repo_name = os.environ.get('GITHUB_REPOSITORY')
     github_token = os.environ.get('GITHUB_TOKEN')
 
+    # Use the GCS client library
+    guidelines = download_and_combine_guidelines("hackathon-sme-code-review-train", "guidelines/")
+    if not guidelines:
+        print("Warning: No guidelines loaded.  Review will proceed without guidelines.")
+
     diff_files = get_pr_latest_commit_diff_files(repo_name, pr_number, github_token)
 
     if diff_files is None:
@@ -101,7 +129,7 @@ def main():
         return
 
     for diff_file in diff_files:
-        review_comment = generate_gemini_review_with_annotations(diff_file, api_key)
+        review_comment = generate_gemini_review_with_annotations(diff_file, api_key, guidelines)
         post_github_review_comments(repo_name, pr_number, diff_file, review_comment, github_token)
 
 if __name__ == "__main__":
