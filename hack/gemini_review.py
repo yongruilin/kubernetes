@@ -51,9 +51,10 @@ def download_and_combine_pr_comments(bucket_name, prefix):
         blobs = bucket.list_blobs(prefix=prefix)  # Use prefix for efficiency
 
         pr_comments_content = ""
-        for blob in blobs:
-            if blob.name.endswith(".txt"):
-                pr_comments_content += blob.download_as_text() + "\n\n"
+        # TODO: Skip for now, since it is too large
+        # for blob in blobs:
+        #     if blob.name.endswith(".txt"):
+        #         pr_comments_content += blob.download_as_text() + "\n\n"
         return pr_comments_content
 
     except Exception as e:
