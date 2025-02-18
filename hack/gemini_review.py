@@ -46,7 +46,7 @@ def download_and_combine_guidelines(bucket_name, prefix):
 def generate_gemini_review_with_annotations(diff_file, api_key, guidelines):
     """Generates a code review with annotations, incorporating guidelines."""
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
     diff = diff_file.patch
     max_diff_length = 20000  # Adjust based on token count
