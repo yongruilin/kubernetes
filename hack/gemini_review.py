@@ -43,7 +43,24 @@ def download_and_combine_guidelines(bucket_name, prefix):
         print(f"Error downloading or combining guidelines: {e}")
         return ""
 
-def generate_gemini_review_with_annotations(diff_file, api_key, guidelines):
+def download_and_combine_pr_comments(bucket_name, prefix):
+    """Downloads text files from GCS using the google-cloud-storage library."""
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blobs = bucket.list_blobs(prefix=prefix)  # Use prefix for efficiency
+
+        pr_comments_content = ""
+        for blob in blobs:
+            if blob.name.endswith(".txt"):
+                pr_comments_content += blob.download_as_text() + "\n\n"
+        return pr_comments_content
+
+    except Exception as e:
+        print(f"Error downloading or combining PR comments: {e}")
+        return ""
+
+def generate_gemini_review_with_annotations(diff_file, api_key, guidelines, pr_comments):
     """Generates a code review with annotations, incorporating guidelines."""
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-2.0-flash')
@@ -58,6 +75,10 @@ def generate_gemini_review_with_annotations(diff_file, api_key, guidelines):
     The following are the API review guidelines:
 
     {guidelines}
+
+    The following are the previous PR comments history:
+
+    {pr_comments}
 
     Review the following code diff from file `{diff_file.filename}` and provide feedback.
     Point out potential issues, suggest improvements, and highlight good practices.
@@ -129,8 +150,12 @@ def main():
         print("Failed to retrieve PR diff files from latest commit. Exiting.")
         return
 
+    pr_comments = download_and_combine_pr_comments("hackathon-sme-code-review-train", "pr_comments/")
+    if not pr_comments:
+        print("Warning: No PR comments loaded. Review will proceed without PR comments history.")
+
     for diff_file in diff_files:
-        review_comment = generate_gemini_review_with_annotations(diff_file, api_key, guidelines)
+        review_comment = generate_gemini_review_with_annotations(diff_file, api_key, guidelines, pr_comments)
         post_github_review_comments(repo_name, pr_number, diff_file, review_comment, github_token)
 
 if __name__ == "__main__":
