@@ -6,7 +6,7 @@ on:
 
 jobs:
   gemini_review:
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-set
 
     steps:
       - name: Checkout code
@@ -21,6 +21,14 @@ jobs:
 
       - name: Install dependencies
         run: pip install google-generativeai requests PyGithub
+
+      - name: Install gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: List files using curl
+        run: |
+          curl -X GET -H "Authorization: Bearer $(gcloud auth application-default print-access-token)" \
+            "https://storage.googleapis.com/storage/v1/b/hackathon-sme-code-review-train/o"
 
       - name: Run Gemini review script
         env:
