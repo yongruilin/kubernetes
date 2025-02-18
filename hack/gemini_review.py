@@ -89,7 +89,6 @@ def generate_gemini_review_with_annotations(diff_file, api_key, guidelines, pr_c
     {diff}
     ```
     """
-    print("prompt: ", prompt)
     print("total_tokens: ", model.count_tokens(prompt))
     response = model.generate_content(prompt)
     return response.text if response.text else None
