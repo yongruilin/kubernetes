@@ -1,7 +1,6 @@
 import google.generativeai as genai
 import os
 from github import Github
-import re
 from google.cloud import storage
 
 def get_pr_latest_commit_diff_files(repo_name, pr_number, github_token):
@@ -69,6 +68,8 @@ def generate_gemini_review_with_annotations(diff_file, api_key, guidelines):
     {diff}
     ```
     """
+    print("prompt: ", prompt)
+    print("total_tokens: ", model.count_tokens(prompt))
     response = model.generate_content(prompt)
     return response.text if response.text else None
 
