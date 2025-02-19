@@ -2,11 +2,12 @@ name: Gemini PR Review
 
 on:
   pull_request_target:
-    types: [opened, synchronize]
+    types: [opened, synchronize, labeled]
 
 jobs:
   gemini_review:
     runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'api-review')
 
     steps:
       - name: Checkout code
