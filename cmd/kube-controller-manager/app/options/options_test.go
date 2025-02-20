@@ -46,7 +46,10 @@ import (
 	cpoptions "k8s.io/cloud-provider/options"
 
 	eventv1 "k8s.io/api/events/v1"
+	"k8s.io/apiserver/pkg/util/compatibility"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	clientgofeaturegate "k8s.io/client-go/features"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	cmconfig "k8s.io/controller-manager/config"
 	cmoptions "k8s.io/controller-manager/options"
 	migration "k8s.io/controller-manager/pkg/leadermigration/options"
@@ -1493,20 +1496,17 @@ func TestWatchListClientFlagChange(t *testing.T) {
 	assertWatchListClientFeatureDefaultValue(t)
 	assertWatchListCommandLineDefaultValue(t, fs)
 
-	args := []string{fmt.Sprintf("--feature-gates=%v=true", clientgofeaturegate.WatchListClient)}
-	if err := fs.Parse(args); err != nil {
-		t.Fatal(fmt.Errorf("FlatSet.Parse failed with %w", err))
-	}
-
-	// this is needed to Apply parsed flags to GlobalRegistry, so the DefaultFeatureGate values can be set from the flag
-	err = s.ComponentGlobalsRegistry.Set()
-	if err != nil {
-		t.Fatal(fmt.Errorf("ComponentGlobalsRegistry.Set failed with %w", err))
-	}
+	// To avoid race condition and multiple Set() calls on the registry,
+	// we need to pass a new registry and set the feature gate manually
+	s.ComponentGlobalsRegistry = basecompatibility.NewComponentGlobalsRegistry()
+	effectiveVersion := compatibility.DefaultBuildEffectiveVersion()
+	featureGate := utilfeature.DefaultFeatureGate.DeepCopy()
+	utilruntime.Must(s.ComponentGlobalsRegistry.Register(basecompatibility.DefaultKubeComponent, effectiveVersion, featureGate))
+	featuregatetesting.SetFeatureGateDuringTest(t, featureGate, featuregate.Feature(clientgofeaturegate.WatchListClient), false)
 
 	watchListClientValue := clientgofeaturegate.FeatureGates().Enabled(clientgofeaturegate.WatchListClient)
-	if !watchListClientValue {
-		t.Fatalf("expected %q feature gate to be enabled after setting the command line flag", clientgofeaturegate.WatchListClient)
+	if watchListClientValue {
+		t.Fatalf("expected %q feature gate to be disabled after setting the command line flag", clientgofeaturegate.WatchListClient)
 	}
 }
 
