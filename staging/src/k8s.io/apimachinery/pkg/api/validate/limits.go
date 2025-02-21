@@ -35,3 +35,23 @@ func Minimum[T constraints.Integer](_ context.Context, _ operation.Operation, fl
 	}
 	return nil
 }
+
+// MaxLength verifies that the specified value is not longer than max
+// characters.
+func MaxLength[T ~string](_ operation.Context, fldPath *field.Path, value, _ *T, max int) field.ErrorList {
+	if value == nil {
+		return nil
+	}
+	if len(*value) > max {
+		return field.ErrorList{field.Invalid(fldPath, *value, content.MaxLenError(max))}
+	}
+	return nil
+}
+
+// MaxItems verifies that the specified slice is not longer than max items.
+func MaxItems[T any](_ operation.Context, fldPath *field.Path, value, _ []T, max int) field.ErrorList {
+	if len(value) > max {
+		return field.ErrorList{field.TooMany(fldPath, len(value), max)}
+	}
+	return nil
+}
