@@ -27,3 +27,14 @@ import (
 func MinError[T constraints.Integer](min T) string {
 	return fmt.Sprintf("must be greater than or equal to %d", min)
 }
+
+// MaxLenError returns a string explanation of a "string too long" validation
+// failure.
+func MaxLenError(length int) string {
+	return fmt.Sprintf("must be no more than %d characters", length)
+}
+
+// EmptyError returns a string explanation of an "empty string" validation.
+func EmptyError() string {
+	return "must contain at least 1 character"
+}
