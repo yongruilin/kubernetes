@@ -31,7 +31,7 @@ func MinError[T constraints.Integer](min T) string {
 // MaxLenError returns a string explanation of a "string too long" validation
 // failure.
 func MaxLenError(length int) string {
-	return fmt.Sprintf("must be no more than %d characters", length)
+	return fmt.Sprintf("must be no more than %d bytes", length)
 }
 
 // EmptyError returns a string explanation of an "empty string" validation.
