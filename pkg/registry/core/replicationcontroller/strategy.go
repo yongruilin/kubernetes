@@ -145,6 +145,7 @@ func (rcStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorL
 			allErrs = append(allErrs.RemoveCoveredByDeclarative(), declarativeErrs...)
 		}
 	}
+
 	return allErrs
 }
 
