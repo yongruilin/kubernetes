@@ -20,10 +20,11 @@ import (
 	"context"
 	"testing"
 
+	"k8s.io/utils/ptr"
+
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	fldTesting "k8s.io/apimachinery/pkg/util/validation/field/testing"
-	"k8s.io/utils/ptr"
+	fldtest "k8s.io/apimachinery/pkg/util/validation/field/testing"
 )
 
 func TestFixedResult(t *testing.T) {
@@ -122,7 +123,7 @@ func TestFixedResult(t *testing.T) {
 		pass:  true,
 	}}
 
-	matcher := fldTesting.Match().ByOrigin().ByDetailExact()
+	matcher := fldtest.ErrorMatcher{}.ByOrigin().ByDetailExact()
 	for i, tc := range cases {
 		result := FixedResult(context.Background(), operation.Operation{}, field.NewPath("fldpath"), tc.value, nil, tc.pass, "detail string")
 		if len(result) != 0 && tc.pass {
@@ -141,7 +142,7 @@ func TestFixedResult(t *testing.T) {
 			wantErrorList := field.ErrorList{
 				field.Invalid(field.NewPath("fldpath"), tc.value, "forced failure: detail string").WithOrigin("validateFalse"),
 			}
-			fldTesting.MatchErrors(t, wantErrorList, result, matcher)
+			matcher.Test(t, wantErrorList, result)
 		}
 	}
 }
