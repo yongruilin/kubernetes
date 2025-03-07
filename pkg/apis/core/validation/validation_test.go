@@ -16759,8 +16759,8 @@ func TestValidateReplicationControllerUpdate(t *testing.T) {
 					})
 					errs = append(errs, rest.ValidateUpdateDeclaratively(ctx, nil, legacyscheme.Scheme, &newVersioned, &oldVersioned)...)
 				}
-				matcher := fldtest.Match().ByType().ByField().ByOrigin().ByDetailSubstring()
-				fldtest.MatchErrors(t, tc.expectedErrs, errs, matcher)
+				matcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin().ByDetailSubstring()
+				matcher.Test(t, tc.expectedErrs, errs)
 			}
 		})
 
@@ -16965,8 +16965,8 @@ func TestValidateReplicationController(t *testing.T) {
 					})
 					errs = append(errs, rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, &versioned)...)
 				}
-				matcher := fldtest.Match().ByType().ByField().ByOrigin().ByDetailSubstring()
-				fldtest.MatchErrors(t, tc.expectedErrs, errs, matcher)
+				matcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin().ByDetailSubstring()
+				matcher.Test(t, tc.expectedErrs, errs)
 			}
 		})
 
