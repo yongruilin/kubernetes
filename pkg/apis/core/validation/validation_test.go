@@ -16972,7 +16972,6 @@ func TestValidateReplicationController(t *testing.T) {
 			matcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin().ByDetailSubstring()
 			matcher.Test(t, tc.expectedErrs, errs)
 		})
-
 		verifyVersionedValidationEquivalence(t, &tc.input, nil)
 	}
 }

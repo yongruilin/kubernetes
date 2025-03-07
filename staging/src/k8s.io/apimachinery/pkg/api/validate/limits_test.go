@@ -22,10 +22,11 @@ import (
 	"testing"
 
 	"golang.org/x/exp/constraints"
+
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/api/validate/constraints"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	fldTesting "k8s.io/apimachinery/pkg/util/validation/field/testing"
+	fldtest "k8s.io/apimachinery/pkg/util/validation/field/testing"
 )
 
 func TestMinimum(t *testing.T) {
@@ -150,12 +151,12 @@ func TestMaxLength(t *testing.T) {
 		},
 	}}
 
-	matcher := fldTesting.Match().ByOrigin().ByDetailSubstring().ByField().ByType()
+	matcher := fldtest.ErrorMatcher{}.ByOrigin().ByDetailSubstring().ByField().ByType()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			v := tc.value
 			gotErrs := MaxLength(context.Background(), operation.Operation{}, field.NewPath("fldpath"), &v, nil, tc.max)
-			fldTesting.MatchErrors(t, tc.wantErrs, gotErrs, matcher)
+			matcher.Test(t, tc.wantErrs, gotErrs)
 		})
 	}
 }
