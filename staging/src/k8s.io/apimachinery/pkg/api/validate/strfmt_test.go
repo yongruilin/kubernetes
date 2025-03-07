@@ -23,7 +23,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	fldTesting "k8s.io/apimachinery/pkg/util/validation/field/testing"
+	fldtest "k8s.io/apimachinery/pkg/util/validation/field/testing"
 )
 
 func TestDNS1123Label(t *testing.T) {
@@ -106,13 +106,13 @@ func TestDNS1123Label(t *testing.T) {
 		},
 	}
 
-	matcher := fldTesting.Match().ByType().ByField().ByOrigin()
+	matcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin()
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			value := tc.label
 			gotErrs := DNSLabel(ctx, operation.Operation{}, fldPath, &value, nil)
 
-			fldTesting.MatchErrors(t, tc.wantErrs, gotErrs, matcher)
+			matcher.Test(t, tc.wantErrs, gotErrs)
 		})
 	}
 }
