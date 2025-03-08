@@ -6307,14 +6307,13 @@ func ValidatePodTemplateSpecForRC(template *core.PodTemplateSpec, selectorMap ma
 func ValidateReplicationControllerSpec(spec, oldSpec *core.ReplicationControllerSpec, fldPath *field.Path, opts PodValidationOptions) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, ValidateNonEmptySelector(spec.Selector, fldPath.Child("selector"))...)
-	if !utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		allErrs = append(allErrs, ValidateNonnegativeField(int64(spec.MinReadySeconds), fldPath.Child("minReadySeconds"))...)
-		if spec.Replicas == nil {
-			allErrs = append(allErrs, field.Required(fldPath.Child("replicas"), ""))
-		} else {
-			allErrs = append(allErrs, ValidateNonnegativeField(int64(*spec.Replicas), fldPath.Child("replicas"))...)
-		}
+	allErrs = append(allErrs, ValidateNonnegativeField(int64(spec.MinReadySeconds), fldPath.Child("minReadySeconds")).MarkCoveredByDeclarative()...)
+	if spec.Replicas == nil {
+		allErrs = append(allErrs, field.Required(fldPath.Child("replicas"), "").MarkCoveredByDeclarative())
+	} else {
+		allErrs = append(allErrs, ValidateNonnegativeField(int64(*spec.Replicas), fldPath.Child("replicas")).MarkCoveredByDeclarative()...)
 	}
+
 	allErrs = append(allErrs, ValidatePodTemplateSpecForRC(spec.Template, spec.Selector, fldPath.Child("template"), opts)...)
 	return allErrs
 }

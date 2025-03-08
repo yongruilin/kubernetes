@@ -127,7 +127,11 @@ func (rcStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorL
 	opts := pod.GetValidationOptionsFromPodTemplate(controller.Spec.Template, nil)
 	allErrs := corevalidation.ValidateReplicationController(controller, opts)
 	if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		allErrs = append(allErrs, rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, obj)...)
+		declarativeErrs := rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, obj)
+		if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover) {
+			allErrs = append(allErrs.RemoveCoveredByDeclarative(), declarativeErrs...)
+		}
+		// TODO: emit mismatch_metric by comparing between allErrs.ExtractCoveredByDeclarative() and declarativeErrs
 	}
 	return allErrs
 }
@@ -181,7 +185,13 @@ func (rcStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) f
 	}
 
 	if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		errs = append(errs, rest.ValidateUpdateDeclaratively(ctx, nil, legacyscheme.Scheme, obj, old)...)
+		// Following above pattern, we need to validate both create and update.
+		declarativeErrs := rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, obj)
+		declarativeErrs = append(declarativeErrs, rest.ValidateUpdateDeclaratively(ctx, nil, legacyscheme.Scheme, obj, old)...)
+		if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover) {
+			errs = append(errs.RemoveCoveredByDeclarative(), declarativeErrs...)
+		}
+		// TODO: emit mismatch_metric by comparing between errs.ExtractCoveredByDeclarative() and declarativeErrs
 	}
 
 	return errs
