@@ -434,7 +434,6 @@ func TestValidateUpdateForDeclarative(t *testing.T) {
 					dedupedImperativeErrs = append(dedupedImperativeErrs, err)
 				}
 			}
-			imperativeErrs = dedupedImperativeErrs
 			equivalenceMatcher.Test(t, dedupedImperativeErrs, declarativeTakeoverErrs)
 		})
 	}
