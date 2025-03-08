@@ -133,8 +133,6 @@ var IsValidLabelValue = content.IsLabelValue
 const dns1123LabelFmt string = "[a-z0-9]([-a-z0-9]*[a-z0-9])?"
 const dns1123LabelFmtWithUnderscore string = "_?[a-z0-9]([-_a-z0-9]*[a-z0-9])?"
 
-const dns1123LabelErrMsg string = "a lowercase RFC 1123 label must consist of lower case alphanumeric characters or '-', and must start and end with an alphanumeric character"
-
 // DNS1123LabelMaxLength is a label's max length in DNS (RFC 1123)
 // Deprecated: Use k8s.io/apimachinery/pkg/api/validate/content.DNS1123LabelMaxLength instead.
 const DNS1123LabelMaxLength int = content.DNS1123LabelMaxLength
