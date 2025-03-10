@@ -37,7 +37,7 @@ type Struct struct {
 	Enum2PtrField *Enum2 `json:"enum2PtrField"`
 
 	NotEnumField    NotEnum  `json:"notEnumField"`
-	NotEnumPtrField *NotEnum `json:"notEnumField"`
+	NotEnumPtrField *NotEnum `json:"notEnumPtrField"`
 }
 
 // +k8s:enum

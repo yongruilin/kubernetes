@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-type testUnion struct{}
 type testMember struct{}
 
 func TestUnion(t *testing.T) {
