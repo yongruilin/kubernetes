@@ -125,14 +125,27 @@ func (rcStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object)
 func (rcStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
 	controller := obj.(*api.ReplicationController)
 	opts := pod.GetValidationOptionsFromPodTemplate(controller.Spec.Template, nil)
+
+	// Run imperative validation
 	allErrs := corevalidation.ValidateReplicationController(controller, opts)
+
+	// If DeclarativeValidation feature gate is enabled, run both validations
 	if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		declarativeErrs := rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, obj)
-		if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover) {
+		// Determine if takeover is enabled
+		takeover := utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover)
+
+		// Run declarative validation with panic recovery
+		declarativeErrs := rest.ValidateDeclarativelyWithRecovery(ctx, nil, legacyscheme.Scheme, obj, takeover)
+
+		// Compare imperative and declarative errors and log + emit metric if there's a mismatch
+		rest.CompareDeclarativeErrorsAndEmitMismatches(allErrs, declarativeErrs, takeover)
+
+		// Only apply declarative errors if takeover is enabled
+		if takeover {
 			allErrs = append(allErrs.RemoveCoveredByDeclarative(), declarativeErrs...)
 		}
-		// TODO: emit mismatch_metric by comparing between allErrs.ExtractCoveredByDeclarative() and declarativeErrs
 	}
+
 	return allErrs
 }
 
@@ -184,14 +197,24 @@ func (rcStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) f
 		}
 	}
 
+	// If DeclarativeValidation feature gate is enabled, run both validations
 	if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		// Following above pattern, we need to validate both create and update.
-		declarativeErrs := rest.ValidateDeclaratively(ctx, nil, legacyscheme.Scheme, obj)
-		declarativeErrs = append(declarativeErrs, rest.ValidateUpdateDeclaratively(ctx, nil, legacyscheme.Scheme, obj, old)...)
-		if utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover) {
+		// Determine if takeover is enabled
+		takeover := utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover)
+
+		// Run both validations with panic recovery
+		declarativeErrs := rest.ValidateDeclarativelyWithRecovery(ctx, nil, legacyscheme.Scheme, obj, takeover)
+		declarativeErrs = append(
+			declarativeErrs,
+			rest.ValidateUpdateDeclarativelyWithRecovery(ctx, nil, legacyscheme.Scheme, obj, old, takeover)...)
+
+		// Only apply declarative errors if takeover is enabled
+		if takeover {
 			errs = append(errs.RemoveCoveredByDeclarative(), declarativeErrs...)
 		}
-		// TODO: emit mismatch_metric by comparing between errs.ExtractCoveredByDeclarative() and declarativeErrs
+
+		// Compare imperative and declarative errors and emit metric if there's a mismatch
+		rest.CompareDeclarativeErrorsAndEmitMismatches(errs, declarativeErrs, takeover)
 	}
 
 	return errs
