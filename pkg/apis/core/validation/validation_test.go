@@ -17017,14 +17017,14 @@ func TestVersionedValidationByFuzzing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not create a %v: %s", kind, err)
 			}
-			f.Fuzz(obj)
+			f.Fill(obj)
 			verifyVersionedValidationEquivalence(t, obj, nil)
 
 			old, err := legacyscheme.Scheme.New(gv.WithKind(kind))
 			if err != nil {
 				t.Fatalf("could not create a %v: %s", kind, err)
 			}
-			f.Fuzz(old)
+			f.Fill(old)
 			verifyVersionedValidationEquivalence(t, obj, old)
 		}
 	}

@@ -19,23 +19,11 @@ package validate
 import (
 	"context"
 
-	"golang.org/x/exp/constraints"
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/api/validate/constraints"
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
-
-// Minimum verifies that the specified value is greater than or equal to min.
-func Minimum[T constraints.Integer](_ context.Context, _ operation.Operation, fldPath *field.Path, value, _ *T, min T) field.ErrorList {
-	if value == nil {
-		return nil
-	}
-	if *value < min {
-		return field.ErrorList{field.Invalid(fldPath, *value, content.MinError(min)).WithOrigin("minimum")}
-	}
-	return nil
-}
 
 // MaxLength verifies that the specified value is not longer than max
 // characters.

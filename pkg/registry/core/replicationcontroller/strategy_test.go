@@ -22,7 +22,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	fldtest "k8s.io/apimachinery/pkg/util/validation/field/testing"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
@@ -303,12 +302,12 @@ func TestValidateForDeclarative(t *testing.T) {
 					imperativeErrs = errs
 				}
 				// The errOutputMatcher is used to verify the output matches the expected errors in test cases.
-				errOutputMatcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin()
+				errOutputMatcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin()
 				errOutputMatcher.Test(t, tc.expectedErrs, errs)
 			}
 			// The equivalenceMatcher is used to verify the output errors from hand-written imperative validation
 			// are equivalent to the output errors when DeclarativeValidationTakeover is enabled.
-			equivalenceMatcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin()
+			equivalenceMatcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin()
 			equivalenceMatcher.Test(t, imperativeErrs, declarativeTakeoverErrs)
 		})
 	}
@@ -412,12 +411,12 @@ func TestValidateUpdateForDeclarative(t *testing.T) {
 					imperativeErrs = errs
 				}
 				// The errOutputMatcher is used to verify the output matches the expected errors in test cases.
-				errOutputMatcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin()
+				errOutputMatcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin()
 				errOutputMatcher.Test(t, tc.expectedErrs, errs)
 			}
 			// The equivalenceMatcher is used to verify the output errors from hand-written imperative validation
 			// are equivalent to the output errors when DeclarativeValidationTakeover is enabled.
-			equivalenceMatcher := fldtest.ErrorMatcher{}.ByType().ByField().ByOrigin()
+			equivalenceMatcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin()
 			// TODO: remove this once ErrorMatcher fix the bug.
 			dedupedImperativeErrs := field.ErrorList{}
 			for _, err := range imperativeErrs {

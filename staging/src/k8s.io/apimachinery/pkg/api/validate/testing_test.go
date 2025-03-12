@@ -24,7 +24,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	fldtest "k8s.io/apimachinery/pkg/util/validation/field/testing"
 )
 
 func TestFixedResult(t *testing.T) {
@@ -123,7 +122,7 @@ func TestFixedResult(t *testing.T) {
 		pass:  true,
 	}}
 
-	matcher := fldtest.ErrorMatcher{}.ByOrigin().ByDetailExact()
+	matcher := field.ErrorMatcher{}.ByOrigin().ByDetailExact()
 	for i, tc := range cases {
 		result := FixedResult(context.Background(), operation.Operation{}, field.NewPath("fldpath"), tc.value, nil, tc.pass, "detail string")
 		if len(result) != 0 && tc.pass {

@@ -138,7 +138,7 @@ func (rcStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorL
 		declarativeErrs := rest.ValidateDeclarativelyWithRecovery(ctx, nil, legacyscheme.Scheme, obj, takeover)
 
 		// Compare imperative and declarative errors and log + emit metric if there's a mismatch
-		rest.CompareDeclarativeErrorsAndEmitMismatches(allErrs, declarativeErrs, takeover)
+		rest.CompareDeclarativeErrorsAndEmitMismatches(ctx, allErrs, declarativeErrs, takeover)
 
 		// Only apply declarative errors if takeover is enabled
 		if takeover {
@@ -214,7 +214,7 @@ func (rcStrategy) ValidateUpdate(ctx context.Context, obj, old runtime.Object) f
 		}
 
 		// Compare imperative and declarative errors and emit metric if there's a mismatch
-		rest.CompareDeclarativeErrorsAndEmitMismatches(errs, declarativeErrs, takeover)
+		rest.CompareDeclarativeErrorsAndEmitMismatches(ctx, errs, declarativeErrs, takeover)
 	}
 
 	return errs

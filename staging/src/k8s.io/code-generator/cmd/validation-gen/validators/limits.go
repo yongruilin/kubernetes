@@ -31,10 +31,6 @@ const (
 )
 
 func init() {
-	RegisterTagValidator(minimumTagValidator{})
-}
-
-func init() {
 	RegisterTagValidator(maxLengthTagValidator{})
 	RegisterTagValidator(maxItemsTagValidator{})
 	RegisterTagValidator(minimumTagValidator{})
