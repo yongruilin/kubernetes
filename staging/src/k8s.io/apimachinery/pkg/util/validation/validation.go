@@ -17,18 +17,14 @@ limitations under the License.
 package validation
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"regexp"
 	"strings"
 	"unicode"
 
-	"k8s.io/apimachinery/pkg/api/operation"
-	"k8s.io/apimachinery/pkg/api/validate"
 	"k8s.io/apimachinery/pkg/api/validate/content"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	netutils "k8s.io/utils/net"
 )
 
 // IsQualifiedName tests whether the value passed is what Kubernetes calls a
@@ -297,41 +293,6 @@ func IsValidPortName(port string) []string {
 		errs = append(errs, "must not begin or end with a hyphen")
 	}
 	return errs
-}
-
-// IsValidIP tests that the argument is a valid IP address.
-func IsValidIP(fldPath *field.Path, value string) field.ErrorList {
-	return validate.IPSloppy(context.TODO(), operation.Operation{}, fldPath, &value, nil)
-}
-
-// IsValidIPv4Address tests that the argument is a valid IPv4 address.
-func IsValidIPv4Address(fldPath *field.Path, value string) field.ErrorList {
-	var allErrors field.ErrorList
-	ip := netutils.ParseIPSloppy(value)
-	if ip == nil || ip.To4() == nil {
-		allErrors = append(allErrors, field.Invalid(fldPath, value, "must be a valid IPv4 address"))
-	}
-	return allErrors
-}
-
-// IsValidIPv6Address tests that the argument is a valid IPv6 address.
-func IsValidIPv6Address(fldPath *field.Path, value string) field.ErrorList {
-	var allErrors field.ErrorList
-	ip := netutils.ParseIPSloppy(value)
-	if ip == nil || ip.To4() != nil {
-		allErrors = append(allErrors, field.Invalid(fldPath, value, "must be a valid IPv6 address"))
-	}
-	return allErrors
-}
-
-// IsValidCIDR tests that the argument is a valid CIDR value.
-func IsValidCIDR(fldPath *field.Path, value string) field.ErrorList {
-	var allErrors field.ErrorList
-	_, _, err := netutils.ParseCIDRSloppy(value)
-	if err != nil {
-		allErrors = append(allErrors, field.Invalid(fldPath, value, "must be a valid CIDR value, (e.g. 10.9.8.0/24 or 2001:db8::/64)"))
-	}
-	return allErrors
 }
 
 const percentFmt string = "[0-9]+%"

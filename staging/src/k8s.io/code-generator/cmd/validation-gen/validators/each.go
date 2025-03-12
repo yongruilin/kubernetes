@@ -303,7 +303,7 @@ func (evtv eachValTagValidator) getListValidations(fldPath *field.Path, t *types
 			cmpFn.Body = buf.String()
 			cmpArg = cmpFn
 		}
-		f := Function(eachValTagName, vfn.Flags(), validateEachSliceVal, cmpArg, WrapperFunction{vfn, t.Elem})
+		f := Function(eachValTagName, vfn.Flags, validateEachSliceVal, cmpArg, WrapperFunction{vfn, t.Elem})
 		result.Functions = append(result.Functions, f)
 	}
 
@@ -315,7 +315,7 @@ func (evtv eachValTagValidator) getMapValidations(t *types.Type, validations Val
 	result.OpaqueValType = validations.OpaqueType
 
 	for _, vfn := range validations.Functions {
-		f := Function(eachValTagName, vfn.Flags(), validateEachMapVal, WrapperFunction{vfn, t.Elem})
+		f := Function(eachValTagName, vfn.Flags, validateEachMapVal, WrapperFunction{vfn, t.Elem})
 		result.Functions = append(result.Functions, f)
 	}
 

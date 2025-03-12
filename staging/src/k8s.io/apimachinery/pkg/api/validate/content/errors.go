@@ -34,12 +34,6 @@ func MaxLenError(length int) string {
 	return fmt.Sprintf("must be no more than %d bytes", length)
 }
 
-// MinError returns a string explanation of a "must be greater than or equal"
-// validation failure.
-func MinError[T constraints.Integer](min T) string {
-	return fmt.Sprintf("must be greater than or equal to %d", min)
-}
-
 // EmptyError returns a string explanation of an "empty string" validation.
 func EmptyError() string {
 	return "must be non-empty"
