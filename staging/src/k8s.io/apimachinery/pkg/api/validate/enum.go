@@ -1,5 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,18 +18,23 @@ package validate
 
 import (
 	"context"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/api/operation"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-// FixedResult asserts a fixed boolean result.  This is mostly useful for
-// testing.
-func FixedResult[T any](_ context.Context, op operation.Operation, fldPath *field.Path, value, _ T, result bool, arg string) field.ErrorList {
-	if result {
+// Enum verifies that the specified value is one of the valid symbols.
+// This is for string enums only.
+func Enum[T ~string](_ context.Context, op operation.Operation, fldPath *field.Path, value, _ *T, symbols sets.Set[T]) field.ErrorList {
+	if value == nil {
 		return nil
 	}
-	return field.ErrorList{
-		field.Invalid(fldPath, value, "forced failure: "+arg).WithOrigin("validateFalse"),
+	if !symbols.Has(*value) {
+		symbolList := symbols.UnsortedList()
+		slices.Sort(symbolList)
+		return field.ErrorList{field.NotSupported[T](fldPath, *value, symbolList)}
 	}
+	return nil
 }

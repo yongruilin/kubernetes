@@ -20,9 +20,10 @@ import (
 	"context"
 	"testing"
 
+	"k8s.io/utils/ptr"
+
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
-	"k8s.io/utils/ptr"
 )
 
 func TestFixedResult(t *testing.T) {
@@ -121,6 +122,7 @@ func TestFixedResult(t *testing.T) {
 		pass:  true,
 	}}
 
+	matcher := field.ErrorMatcher{}.ByOrigin().ByDetailExact()
 	for i, tc := range cases {
 		result := FixedResult(context.Background(), operation.Operation{}, field.NewPath("fldpath"), tc.value, nil, tc.pass, "detail string")
 		if len(result) != 0 && tc.pass {
@@ -136,9 +138,10 @@ func TestFixedResult(t *testing.T) {
 				t.Errorf("case %d: unexepected multi-error: %v", i, fmtErrs(result))
 				continue
 			}
-			if want, got := "forced failure: detail string", result[0].Detail; got != want {
-				t.Errorf("case %d: wrong error, expected: %q, got: %q", i, want, got)
+			wantErrorList := field.ErrorList{
+				field.Invalid(field.NewPath("fldpath"), tc.value, "forced failure: detail string").WithOrigin("validateFalse"),
 			}
+			matcher.Test(t, wantErrorList, result)
 		}
 	}
 }

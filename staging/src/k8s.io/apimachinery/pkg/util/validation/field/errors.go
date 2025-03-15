@@ -44,6 +44,9 @@ type Error struct {
 	// - A structured format using "format=<dash-style-identifier>" for validation errors related to specific formats
 	//   (e.g., "format=dns-label", "format=qualified-name")
 	//
+	// If the Origin corresponds to an existing declarative validation tag or JSON Schema keyword,
+	// use that same name for consistency.
+	//
 	// Origin should be set in the most deeply nested validation function that
 	// can still identify the unique source of the error.
 	Origin string
@@ -280,7 +283,7 @@ func TooMany(field *Path, actualQuantity, maxQuantity int) *Error {
 	if maxQuantity >= 0 {
 		msg = fmt.Sprintf("must have at most %d items", maxQuantity)
 	} else {
-		msg = "has too many items"
+		msg = "too many items"
 	}
 
 	var actual interface{}
