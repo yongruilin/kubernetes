@@ -41,14 +41,14 @@ var globalEachKey *eachKeyTagValidator
 func init() {
 	// Lists with list-map semantics are comprised of multiple tags, which need
 	// to share information between them.
-	shared := map[string]*listMap{} // keyed by the fieldpath
-	RegisterTagValidator(listTypeTagValidator{shared})
-	RegisterTagValidator(listMapKeyTagValidator{shared})
+	shared := map[string]*listMetadata{} // keyed by the fieldpath
+	RegisterTagValidator(listTypeTagValidator{byFieldPath: shared})
+	RegisterTagValidator(listMapKeyTagValidator{byFieldPath: shared})
 
-	globalEachVal = &eachValTagValidator{shared, nil}
+	globalEachVal = &eachValTagValidator{byFieldPath: shared, validator: nil}
 	RegisterTagValidator(globalEachVal)
 
-	globalEachKey = &eachKeyTagValidator{nil}
+	globalEachKey = &eachKeyTagValidator{validator: nil}
 	RegisterTagValidator(globalEachKey)
 }
 
@@ -56,13 +56,14 @@ func init() {
 var listTagsValidScopes = sets.New(ScopeAny)
 
 // listMap collects information about a single list with map semantics.
-type listMap struct {
+type listMetadata struct {
 	declaredAsMap bool
+	declaredAsSet bool
 	keyFields     []string
 }
 
 type listTypeTagValidator struct {
-	byFieldPath map[string]*listMap
+	byFieldPath map[string]*listMetadata
 }
 
 func (listTypeTagValidator) Init(Config) {}
@@ -93,6 +94,11 @@ func (lttv listTypeTagValidator) GetValidations(context Context, _ []string, pay
 	case "atomic":
 		// Allowed but no special handling.
 	case "set":
+		if lttv.byFieldPath[context.Path.String()] == nil {
+			lttv.byFieldPath[context.Path.String()] = &listMetadata{}
+		}
+		lm := lttv.byFieldPath[context.Path.String()]
+		lm.declaredAsSet = true
 		t = t.Elem
 		// NOTE: lists of pointers are not supported, and that is enforced way before this point.
 		for t.Kind == types.Alias {
@@ -111,7 +117,7 @@ func (lttv listTypeTagValidator) GetValidations(context Context, _ []string, pay
 
 		// Save the fact that this list is a map.
 		if lttv.byFieldPath[context.Path.String()] == nil {
-			lttv.byFieldPath[context.Path.String()] = &listMap{}
+			lttv.byFieldPath[context.Path.String()] = &listMetadata{}
 		}
 		lm := lttv.byFieldPath[context.Path.String()]
 		lm.declaredAsMap = true
@@ -138,7 +144,7 @@ func (lttv listTypeTagValidator) Docs() TagDoc {
 }
 
 type listMapKeyTagValidator struct {
-	byFieldPath map[string]*listMap
+	byFieldPath map[string]*listMetadata
 }
 
 func (listMapKeyTagValidator) Init(Config) {}
@@ -173,7 +179,7 @@ func (lmktv listMapKeyTagValidator) GetValidations(context Context, _ []string, 
 	}
 
 	if lmktv.byFieldPath[context.Path.String()] == nil {
-		lmktv.byFieldPath[context.Path.String()] = &listMap{}
+		lmktv.byFieldPath[context.Path.String()] = &listMetadata{}
 	}
 	lm := lmktv.byFieldPath[context.Path.String()]
 	lm.keyFields = append(lm.keyFields, fieldName)
@@ -197,7 +203,7 @@ func (lmktv listMapKeyTagValidator) Docs() TagDoc {
 }
 
 type eachValTagValidator struct {
-	byFieldPath map[string]*listMap
+	byFieldPath map[string]*listMetadata
 	validator   Validator
 }
 
@@ -275,33 +281,58 @@ func (evtv eachValTagValidator) getListValidations(fldPath *field.Path, t *types
 	result := Validations{}
 	result.OpaqueValType = validations.OpaqueType
 
-	var listMap *listMap
+	var listMetadata *listMetadata
 	if lm, found := evtv.byFieldPath[fldPath.String()]; found {
-		if !lm.declaredAsMap {
-			return Validations{}, fmt.Errorf("found listMapKey without listType=map")
+		if lm.declaredAsSet && lm.declaredAsMap {
+			return Validations{}, fmt.Errorf("listType cannot be both et and map")
 		}
-		if len(lm.keyFields) == 0 {
+		if lm.declaredAsMap && len(lm.keyFields) == 0 {
 			return Validations{}, fmt.Errorf("found listType=map without listMapKey")
 		}
-		listMap = lm
+		if len(lm.keyFields) > 0 && !lm.declaredAsMap {
+			return Validations{}, fmt.Errorf("found listMapKey without listType=map")
+		}
+		listMetadata = lm
 	}
+
 	for _, vfn := range validations.Functions {
 		var cmpArg any = Literal("nil")
-		if listMap != nil {
-			cmpFn := FunctionLiteral{
-				Parameters: []ParamResult{{"a", t.Elem}, {"b", t.Elem}},
-				Results:    []ParamResult{{"", types.Bool}},
-			}
-			buf := strings.Builder{}
-			buf.WriteString("return ")
-			for i, fld := range listMap.keyFields {
-				if i > 0 {
-					buf.WriteString(" && ")
+		if listMetadata != nil {
+			if listMetadata.declaredAsMap {
+				cmpFn := FunctionLiteral{
+					Parameters: []ParamResult{{"a", t.Elem}, {"b", t.Elem}},
+					Results:    []ParamResult{{"", types.Bool}},
 				}
-				buf.WriteString(fmt.Sprintf("a.%s == b.%s", fld, fld))
+				buf := strings.Builder{}
+				buf.WriteString("return ")
+				for i, fld := range listMetadata.keyFields {
+					if i > 0 {
+						buf.WriteString(" && ")
+					}
+					buf.WriteString(fmt.Sprintf("a.%s == b.%s", fld, fld))
+				}
+				cmpFn.Body = buf.String()
+				cmpArg = cmpFn
+			} else if listMetadata.declaredAsSet {
+				elemType := t.Elem
+				if elemType.Kind == types.Alias {
+					elemType = elemType.Underlying
+				}
+				if elemType.IsComparable() {
+					cmpArg = FunctionLiteral{
+						Parameters: []ParamResult{{"a", t.Elem}, {"b", t.Elem}},
+						Results:    []ParamResult{{"", types.Bool}},
+						Body:       "return a == b",
+					}
+				} else {
+					cmpArg = FunctionLiteral{
+						Parameters: []ParamResult{{"a", t.Elem}, {"b", t.Elem}},
+						Results:    []ParamResult{{"", types.Bool}},
+						Body:       "return $.equality.Semantic|raw$.DeepEqual(a, b)",
+						BodyArgs:   []BodyArg{{Symbol: "equality", Package: "k8s.io/apimachinery/pkg/api/equality", Names: []string{"Semantic"}}},
+					}
+				}
 			}
-			cmpFn.Body = buf.String()
-			cmpArg = cmpFn
 		}
 		f := Function(eachValTagName, vfn.Flags, validateEachSliceVal, cmpArg, WrapperFunction{vfn, t.Elem})
 		result.Functions = append(result.Functions, f)

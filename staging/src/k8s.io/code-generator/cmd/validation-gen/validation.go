@@ -1313,7 +1313,15 @@ func toGolangSourceDataLiteral(sw *generator.SnippetWriter, c *generator.Context
 		if len(v.Results) > 1 {
 			sw.Do(")", nil)
 		}
-		sw.Do(" { $.$ }", v.Body)
+		if len(v.BodyArgs) > 0 {
+			targs := generator.Args{}
+			for _, arg := range v.BodyArgs {
+				targs[arg.Symbol] = mkSymbolArgs(c, mkPkgNames(arg.Package, arg.Names...))
+			}
+			sw.Do(fmt.Sprintf(" { %s }", v.Body), targs)
+		} else {
+			sw.Do(" { $.$ }", v.Body)
+		}
 	default:
 		rv := reflect.ValueOf(value)
 		switch rv.Kind() {

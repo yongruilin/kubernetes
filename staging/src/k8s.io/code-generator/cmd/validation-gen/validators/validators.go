@@ -421,10 +421,20 @@ type Literal string
 // FunctionLiteral describes a function-literal expression that can be used as
 // an argument to a validator.  Unlike WrapperFunction, this does not
 // necessarily have the same signature as a regular validation function.
+// If BodyArgs is not empty, it can be used to parse the body of the function
+// literal.
 type FunctionLiteral struct {
 	Parameters []ParamResult
 	Results    []ParamResult
 	Body       string
+	BodyArgs   []BodyArg
+}
+
+// BodyArg is used to pass arguments to a function literal.
+type BodyArg struct {
+	Symbol  string
+	Package string
+	Names   []string
 }
 
 // ParamResult represents a parameter or a result of a function.
