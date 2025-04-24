@@ -1065,6 +1065,18 @@ func (g *genValidations) emitCallToOtherTypeFunc(c *generator.Context, node *typ
 // variables named "obj" and "oldObj", and the field path to this value is
 // named "fldPath".
 func emitCallsToValidators(c *generator.Context, validations []validators.FunctionGen, ratchetingOptions RatchetingOptions, sw *generator.SnippetWriter) {
+	if ratchetingOptions.NoRatcheting {
+		sw.Do("// ratcheting is disabled for this field\n", nil)
+	} else if ratchetingOptions.RatchOption == 2 {
+		targs := generator.Args{
+			"equality":  mkSymbolArgs(c, equalityPkgSymbols),
+			"operation": mkSymbolArgs(c, operationPkgSymbols),
+		}
+		sw.Do("// ratcheting is enabled for this field\n", nil)
+		sw.Do("if op.Type == $.operation.Update|raw$ && $.equality.Semantic|raw$.DeepEqual(obj, oldObj) {\n", targs)
+		sw.Do("   return nil // no changes\n", nil)
+		sw.Do("}\n", nil)
+	}
 	// Helper func
 	sort := func(in []validators.FunctionGen) []validators.FunctionGen {
 		sooner := make([]validators.FunctionGen, 0, len(in))
@@ -1166,14 +1178,18 @@ func emitCallsToValidators(c *generator.Context, validations []validators.Functi
 				sw.Do("...)\n", nil)
 			}
 		}
-		if ratchetingOptions.NoRatcheting {
-			sw.Do("// ratcheting is disabled for this field\n", nil)
-		} else {
-			sw.Do("// ratcheting is enabled for this field\n", nil)
-			sw.Do("if op.Type == $.operation.Update|raw$ && len(errs) > 0 && $.equality.Semantic|raw$.DeepEqual(obj, oldObj) {\n", targs)
-			sw.Do("   return nil // no changes\n", nil)
-			sw.Do("}\n", nil)
+	}
+	if ratchetingOptions.NoRatcheting {
+		sw.Do("// ratcheting is disabled for this field\n", nil)
+	} else if ratchetingOptions.RatchOption == 1 {
+		targs := generator.Args{
+			"equality":  mkSymbolArgs(c, equalityPkgSymbols),
+			"operation": mkSymbolArgs(c, operationPkgSymbols),
 		}
+		sw.Do("// ratcheting is enabled for this field\n", nil)
+		sw.Do("if op.Type == $.operation.Update|raw$ && len(errs) > 0 && $.equality.Semantic|raw$.DeepEqual(obj, oldObj) {\n", targs)
+		sw.Do("   return nil // no changes\n", nil)
+		sw.Do("}\n", nil)
 	}
 }
 

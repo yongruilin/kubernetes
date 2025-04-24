@@ -24,33 +24,68 @@ import "k8s.io/code-generator/cmd/validation-gen/testscheme"
 
 var localSchemeBuilder = testscheme.New()
 
-type RootStruct struct {
+// +k8s:ratcheting=1
+// +k8s:validateFalse="type Struct1"
+type Struct1 struct {
 	TypeMeta int
 
-	MyStruct Struct `json:"myStruct"`
-}
-
-// +k8s:immutable
-type Struct struct {
-
 	// +k8s:listType=map
 	// +k8s:listMapKey=key1Field
 	// +k8s:eachVal=+k8s:immutable
-	ListField []OtherStruct `json:"listField"`
-
-	// +k8s:listType=map
-	// +k8s:listMapKey=key1Field
-	// +k8s:eachVal=+k8s:immutable
-	// +k8s:ratcheting=disabled
-	ListTypedefField []OtherTypedefStruct `json:"listTypedefField"`
+	// +k8s:ratcheting=1
+	ListField []OtherStruct1 `json:"listField"`
 
 	// +k8s:minimum=1
+	// +k8s:ratcheting=1
 	MinField int `json:"minField"`
 }
 
-type OtherStruct struct {
+// +k8s:validateFalse="type OtherStruct"
+// +k8s:ratcheting=1
+type OtherStruct1 struct {
+	// +k8s:ratcheting=1
 	Key1Field string `json:"key1Field"`
+	// +k8s:ratcheting=1
 	DataField string `json:"dataField"`
 }
 
-type OtherTypedefStruct OtherStruct
+// +k8s:ratcheting=2
+// +k8s:validateFalse="type Struct2"
+type Struct2 struct {
+	TypeMeta int
+
+	// +k8s:listType=map
+	// +k8s:listMapKey=key1Field
+	// +k8s:eachVal=+k8s:immutable
+	// +k8s:ratcheting=2
+	ListField []OtherStruct1 `json:"listField"`
+
+	// +k8s:minimum=1
+	// +k8s:ratcheting=2
+	MinField int `json:"minField"`
+}
+
+// +k8s:validateFalse="type OtherStruct"
+// +k8s:ratcheting=2
+type OtherStruct2 struct {
+	// +k8s:ratcheting=2
+	Key1Field string `json:"key1Field"`
+	// +k8s:ratcheting=2
+	DataField string `json:"dataField"`
+}
+
+type Element1 struct {
+	TypeMeta int
+	// +k8s:ratcheting=1
+	// +k8s:optional
+	// +k8s:validateFalse="type Element1"
+	Value *Element1 `json:"value"`
+}
+
+type Element2 struct {
+	TypeMeta int
+	// +k8s:ratcheting=2
+	// +k8s:optional
+	// +k8s:validateFalse="type Element2"
+	Value *Element2 `json:"value"`
+}

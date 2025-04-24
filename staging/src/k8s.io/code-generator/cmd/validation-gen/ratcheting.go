@@ -1,6 +1,10 @@
 package main
 
-import "k8s.io/gengo/v2"
+import (
+	"fmt"
+
+	"k8s.io/gengo/v2"
+)
 
 const ratchetingTag = "k8s:ratcheting"
 
@@ -21,6 +25,13 @@ func extractRatchetingOptions(comments []string) (RatchetingOptions, error) {
 		if tag.Value == "disabled" {
 			return RatchetingOptions{NoRatcheting: true}, nil
 		}
+		if tag.Value == "1" {
+			return RatchetingOptions{RatchOption: 1}, nil
+		}
+		if tag.Value == "2" {
+			return RatchetingOptions{RatchOption: 2}, nil
+		}
+		return RatchetingOptions{}, fmt.Errorf("invalid ratcheting option: %s", tag.Value)
 	}
 
 	return RatchetingOptions{}, nil
@@ -28,4 +39,5 @@ func extractRatchetingOptions(comments []string) (RatchetingOptions, error) {
 
 type RatchetingOptions struct {
 	NoRatcheting bool
+	RatchOption  int
 }
