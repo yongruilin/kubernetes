@@ -53,3 +53,15 @@ type T3 struct {
 	// NOTE: no validations.
 	PT3 *T3 `json:"pt3"`
 }
+
+type T4 struct {
+	// +k8s:validateFalse="field T4.PT1"
+	// +k8s:eachVal=+k8s:validateFalse="field T4.PT1[*]"
+	// +k8s:optional
+	PT1 []T4 `json:"pt1"`
+
+	// +k8s:validateFalse="field T4.PT2"
+	// +k8s:eachVal=+k8s:validateFalse="field T4.PT2[*]"
+	// +k8s:optional
+	PT2 []T4 `json:"pt2"`
+}

@@ -169,12 +169,7 @@ func hasValidationsImpl(n *typeNode, seen map[*typeNode]bool) bool {
 	}
 	seen[n] = true
 
-	if r, found := hasValidationsCache[n]; found {
-		return r
-	}
-
 	r := hasValidationsMiss(n, seen)
-	hasValidationsCache[n] = r
 	return r
 }
 

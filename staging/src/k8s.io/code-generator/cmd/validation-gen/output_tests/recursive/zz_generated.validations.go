@@ -42,6 +42,9 @@ func RegisterValidations(scheme *testscheme.Scheme) error {
 	scheme.AddValidationFunc((*T2)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
 		return Validate_T2(ctx, op, nil /* fldPath */, obj.(*T2), safe.Cast[*T2](oldObj))
 	})
+	scheme.AddValidationFunc((*T4)(nil), func(ctx context.Context, op operation.Operation, obj, oldObj interface{}) field.ErrorList {
+		return Validate_T4(ctx, op, nil /* fldPath */, obj.(*T4), safe.Cast[*T4](oldObj))
+	})
 	return nil
 }
 
@@ -107,6 +110,36 @@ func Validate_T2(ctx context.Context, op operation.Operation, fldPath *field.Pat
 			errs = append(errs, Validate_T2(ctx, op, fldPath, obj, oldObj)...)
 			return
 		}(fldPath.Child("pt2"), obj.PT2, safe.Field(oldObj, func(oldObj *T2) *T2 { return oldObj.PT2 }))...)
+
+	return errs
+}
+
+func Validate_T4(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T4) (errs field.ErrorList) {
+	// field T4.PT1
+	errs = append(errs,
+		func(fldPath *field.Path, obj, oldObj []T4) (errs field.ErrorList) {
+			if e := validate.OptionalSlice(ctx, op, fldPath, obj, oldObj); len(e) != 0 {
+				return // do not proceed
+			}
+			errs = append(errs, validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "field T4.PT1")...)
+			errs = append(errs, validate.EachSliceVal(ctx, op, fldPath, obj, oldObj, nil, func(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T4) field.ErrorList {
+				return validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "field T4.PT1[*]")
+			})...)
+			return
+		}(fldPath.Child("pt1"), obj.PT1, safe.Field(oldObj, func(oldObj *T4) []T4 { return oldObj.PT1 }))...)
+
+	// field T4.PT2
+	errs = append(errs,
+		func(fldPath *field.Path, obj, oldObj []T4) (errs field.ErrorList) {
+			if e := validate.OptionalSlice(ctx, op, fldPath, obj, oldObj); len(e) != 0 {
+				return // do not proceed
+			}
+			errs = append(errs, validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "field T4.PT2")...)
+			errs = append(errs, validate.EachSliceVal(ctx, op, fldPath, obj, oldObj, nil, func(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *T4) field.ErrorList {
+				return validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "field T4.PT2[*]")
+			})...)
+			return
+		}(fldPath.Child("pt2"), obj.PT2, safe.Field(oldObj, func(oldObj *T4) []T4 { return oldObj.PT2 }))...)
 
 	return errs
 }
