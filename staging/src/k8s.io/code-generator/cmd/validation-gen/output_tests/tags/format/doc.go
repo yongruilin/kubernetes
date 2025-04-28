@@ -33,21 +33,21 @@ type Struct struct {
 	// +k8s:format=ip-sloppy
 	IPPtrField *string `json:"ipPtrField"`
 
+	// Note: no validation here
+	IPTypedefField IPStringType `json:"ipTypedefField"`
+
 	// +k8s:format=dns-label
 	DNSLabelField string `json:"dnsLabelField"`
 
 	// +k8s:format=dns-label
 	DNSLabelPtrField *string `json:"dnsLabelPtrField"`
 
-	// +k8s:format=dns-label
-	DNSLabelTypedefField UnvalidatedStringType `json:"dnsLabelTypedefField"`
-
 	// Note: no validation here
-	IPTypedefField IPStringType `json:"ipTypedefField"`
+	DNSLabelTypedefField DNSLabelStringType `json:"dnsLabelTypedefField"`
 }
-
-// Note: no validation here
-type UnvalidatedStringType string
 
 // +k8s:format=ip-sloppy
 type IPStringType string
+
+// +k8s:format=dns-label
+type DNSLabelStringType string
