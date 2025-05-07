@@ -38,6 +38,9 @@ type Struct struct {
 
 	// +k8s:listType=set
 	SliceNonComparableField []NonComparableStruct `json:"sliceNonComparableField"`
+
+	// +k8s:listType=set
+	SliceFalselyComparableField []FalselyComparableStruct `json:"sliceFalselyComparableField"`
 }
 
 type ImmutableStruct struct {
@@ -56,6 +59,17 @@ type ImmutableStruct struct {
 	// +k8s:listType=set
 	// +k8s:eachVal=+k8s:immutable
 	SliceSetNonComparableField []NonComparableStruct `json:"sliceSetNonComparableField"`
+
+	// +k8s:eachVal=+k8s:immutable
+	SlicePrimitiveField []int `json:"slicePrimitiveField"`
+
+	// +k8s:listType=set
+	// +k8s:eachVal=+k8s:immutable
+	SliceSetPrimitiveField []int `json:"sliceSetPrimitiveField"`
+
+	// +k8s:listType=set
+	// +k8s:eachVal=+k8s:immutable
+	SliceSetFalselyComparableField []FalselyComparableStruct `json:"sliceSetFalselyComparableField"`
 }
 
 type ComparableStruct struct {
@@ -64,4 +78,10 @@ type ComparableStruct struct {
 
 type NonComparableStruct struct {
 	SliceField []string `json:"sliceField"`
+}
+
+// FalselyComparableStruct contains a pointer field which makes Go's == operator
+// only compare the pointers, not the underlying values
+type FalselyComparableStruct struct {
+	StringPtrField *string `json:"stringPtrField"`
 }
