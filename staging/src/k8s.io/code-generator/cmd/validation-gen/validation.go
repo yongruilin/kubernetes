@@ -756,8 +756,6 @@ func (g *genValidations) hasValidations(n *typeNode) bool {
 	return g.hasValidationsImpl(n, seen)
 }
 
-type decision string
-
 // hasValidationsImpl implements hasValidations without risk of infinite
 // recursion.
 func (g *genValidations) hasValidationsImpl(n *typeNode, seen map[*typeNode]bool) bool {
