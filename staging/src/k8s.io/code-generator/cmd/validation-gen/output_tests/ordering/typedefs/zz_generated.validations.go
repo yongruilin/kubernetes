@@ -24,6 +24,7 @@ package typedefs
 import (
 	context "context"
 
+	equality "k8s.io/apimachinery/pkg/api/equality"
 	operation "k8s.io/apimachinery/pkg/api/operation"
 	safe "k8s.io/apimachinery/pkg/api/safe"
 	validate "k8s.io/apimachinery/pkg/api/validate"
@@ -53,6 +54,9 @@ func RegisterValidations(scheme *testscheme.Scheme) error {
 
 func Validate_E01(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *E01) (errs field.ErrorList) {
 	// type E01
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	errs = append(errs, validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "E01, no flags")...)
 
 	return errs
@@ -60,6 +64,9 @@ func Validate_E01(ctx context.Context, op operation.Operation, fldPath *field.Pa
 
 func Validate_E02(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *E02) (errs field.ErrorList) {
 	// type E02
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	if e := validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "E02, ShortCircuit"); len(e) != 0 {
 		errs = append(errs, e...)
 		return // do not proceed
@@ -70,6 +77,9 @@ func Validate_E02(ctx context.Context, op operation.Operation, fldPath *field.Pa
 
 func Validate_E03(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *E03) (errs field.ErrorList) {
 	// type E03
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	if e := validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "E03, ShortCircuit"); len(e) != 0 {
 		errs = append(errs, e...)
 		return // do not proceed
@@ -81,6 +91,9 @@ func Validate_E03(ctx context.Context, op operation.Operation, fldPath *field.Pa
 
 func Validate_EMultiple(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *EMultiple) (errs field.ErrorList) {
 	// type EMultiple
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	if e := validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "EMultiple, ShortCircuit 1"); len(e) != 0 {
 		errs = append(errs, e...)
 		return // do not proceed

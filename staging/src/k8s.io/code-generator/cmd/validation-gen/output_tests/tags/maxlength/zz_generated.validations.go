@@ -24,6 +24,7 @@ package maxlength
 import (
 	context "context"
 
+	equality "k8s.io/apimachinery/pkg/api/equality"
 	operation "k8s.io/apimachinery/pkg/api/operation"
 	safe "k8s.io/apimachinery/pkg/api/safe"
 	validate "k8s.io/apimachinery/pkg/api/validate"
@@ -44,6 +45,9 @@ func RegisterValidations(scheme *testscheme.Scheme) error {
 
 func Validate_Max0Type(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *Max0Type) (errs field.ErrorList) {
 	// type Max0Type
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 0)...)
 
 	return errs
@@ -51,6 +55,9 @@ func Validate_Max0Type(ctx context.Context, op operation.Operation, fldPath *fie
 
 func Validate_Max10Type(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *Max10Type) (errs field.ErrorList) {
 	// type Max10Type
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 10)...)
 
 	return errs
@@ -62,6 +69,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max0Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *string) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 0)...)
 			return
 		}(fldPath.Child("max0Field"), &obj.Max0Field, safe.Field(oldObj, func(oldObj *Struct) *string { return &oldObj.Max0Field }))...)
@@ -69,6 +79,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max0PtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *string) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 0)...)
 			return
 		}(fldPath.Child("max0PtrField"), obj.Max0PtrField, safe.Field(oldObj, func(oldObj *Struct) *string { return oldObj.Max0PtrField }))...)
@@ -76,6 +89,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max10Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *string) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 10)...)
 			return
 		}(fldPath.Child("max10Field"), &obj.Max10Field, safe.Field(oldObj, func(oldObj *Struct) *string { return &oldObj.Max10Field }))...)
@@ -83,6 +99,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max10PtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *string) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 10)...)
 			return
 		}(fldPath.Child("max10PtrField"), obj.Max10PtrField, safe.Field(oldObj, func(oldObj *Struct) *string { return oldObj.Max10PtrField }))...)
@@ -90,6 +109,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max0UnvalidatedTypedefField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *UnvalidatedStringType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 0)...)
 			return
 		}(fldPath.Child("max0UnvalidatedTypedefField"), &obj.Max0UnvalidatedTypedefField, safe.Field(oldObj, func(oldObj *Struct) *UnvalidatedStringType { return &oldObj.Max0UnvalidatedTypedefField }))...)
@@ -97,6 +119,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max0UnvalidatedTypedefPtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *UnvalidatedStringType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 0)...)
 			return
 		}(fldPath.Child("max0UnvalidatedTypedefPtrField"), obj.Max0UnvalidatedTypedefPtrField, safe.Field(oldObj, func(oldObj *Struct) *UnvalidatedStringType { return oldObj.Max0UnvalidatedTypedefPtrField }))...)
@@ -104,6 +129,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max10UnvalidatedTypedefField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *UnvalidatedStringType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 10)...)
 			return
 		}(fldPath.Child("max10UnvalidatedTypedefField"), &obj.Max10UnvalidatedTypedefField, safe.Field(oldObj, func(oldObj *Struct) *UnvalidatedStringType { return &oldObj.Max10UnvalidatedTypedefField }))...)
@@ -111,6 +139,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Max10UnvalidatedTypedefPtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *UnvalidatedStringType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.MaxLength(ctx, op, fldPath, obj, oldObj, 10)...)
 			return
 		}(fldPath.Child("max10UnvalidatedTypedefPtrField"), obj.Max10UnvalidatedTypedefPtrField, safe.Field(oldObj, func(oldObj *Struct) *UnvalidatedStringType { return oldObj.Max10UnvalidatedTypedefPtrField }))...)

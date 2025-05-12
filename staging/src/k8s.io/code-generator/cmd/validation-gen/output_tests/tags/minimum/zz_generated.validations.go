@@ -24,6 +24,7 @@ package minimum
 import (
 	context "context"
 
+	equality "k8s.io/apimachinery/pkg/api/equality"
 	operation "k8s.io/apimachinery/pkg/api/operation"
 	safe "k8s.io/apimachinery/pkg/api/safe"
 	validate "k8s.io/apimachinery/pkg/api/validate"
@@ -44,6 +45,9 @@ func RegisterValidations(scheme *testscheme.Scheme) error {
 
 func Validate_IntType(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *IntType) (errs field.ErrorList) {
 	// type IntType
+	if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+		return nil // no changes
+	}
 	errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 
 	return errs
@@ -55,6 +59,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.IntField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *int) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("intField"), &obj.IntField, safe.Field(oldObj, func(oldObj *Struct) *int { return &oldObj.IntField }))...)
@@ -62,6 +69,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.IntPtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *int) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("intPtrField"), obj.IntPtrField, safe.Field(oldObj, func(oldObj *Struct) *int { return oldObj.IntPtrField }))...)
@@ -69,6 +79,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Int16Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *int16) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("int16Field"), &obj.Int16Field, safe.Field(oldObj, func(oldObj *Struct) *int16 { return &oldObj.Int16Field }))...)
@@ -76,6 +89,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Int32Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *int32) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("int32Field"), &obj.Int32Field, safe.Field(oldObj, func(oldObj *Struct) *int32 { return &oldObj.Int32Field }))...)
@@ -83,6 +99,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Int64Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *int64) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("int64Field"), &obj.Int64Field, safe.Field(oldObj, func(oldObj *Struct) *int64 { return &oldObj.Int64Field }))...)
@@ -90,6 +109,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.UintField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *uint) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("uintField"), &obj.UintField, safe.Field(oldObj, func(oldObj *Struct) *uint { return &oldObj.UintField }))...)
@@ -97,6 +119,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.UintPtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *uint) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("uintPtrField"), obj.UintPtrField, safe.Field(oldObj, func(oldObj *Struct) *uint { return oldObj.UintPtrField }))...)
@@ -104,6 +129,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Uint16Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *uint16) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("uint16Field"), &obj.Uint16Field, safe.Field(oldObj, func(oldObj *Struct) *uint16 { return &oldObj.Uint16Field }))...)
@@ -111,6 +139,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Uint32Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *uint32) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("uint32Field"), &obj.Uint32Field, safe.Field(oldObj, func(oldObj *Struct) *uint32 { return &oldObj.Uint32Field }))...)
@@ -118,6 +149,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.Uint64Field
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *uint64) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			return
 		}(fldPath.Child("uint64Field"), &obj.Uint64Field, safe.Field(oldObj, func(oldObj *Struct) *uint64 { return &oldObj.Uint64Field }))...)
@@ -125,6 +159,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.TypedefField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *IntType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			errs = append(errs, Validate_IntType(ctx, op, fldPath, obj, oldObj)...)
 			return
@@ -133,6 +170,9 @@ func Validate_Struct(ctx context.Context, op operation.Operation, fldPath *field
 	// field Struct.TypedefPtrField
 	errs = append(errs,
 		func(fldPath *field.Path, obj, oldObj *IntType) (errs field.ErrorList) {
+			if op.Type == operation.Update && equality.Semantic.DeepEqual(obj, oldObj) {
+				return nil // no changes
+			}
 			errs = append(errs, validate.Minimum(ctx, op, fldPath, obj, oldObj, 1)...)
 			errs = append(errs, Validate_IntType(ctx, op, fldPath, obj, oldObj)...)
 			return
