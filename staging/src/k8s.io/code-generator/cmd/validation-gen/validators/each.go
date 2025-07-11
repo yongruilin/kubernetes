@@ -43,14 +43,27 @@ var globalEachKey *eachKeyTagValidator
 func init() {
 	// Lists with list-map semantics are comprised of multiple tags, which need
 	// to share information between them.
-	shared := map[string]*listMetadata{} // keyed by the field or type path
-	RegisterTagValidator(listTypeTagValidator{byPath: shared})
-	RegisterTagValidator(listMapKeyTagValidator{byPath: shared})
+	listMeta := map[string]*listMetadata{} // keyed by the field or type path
+	RegisterTagValidator(listTypeTagValidator{byPath: listMeta})
+	RegisterTagValidator(listMapKeyTagValidator{byPath: listMeta})
 
-	RegisterFieldValidator(listValidator{byPath: shared})
-	RegisterTypeValidator(listValidator{byPath: shared})
+	RegisterFieldValidator(listValidator{byPath: listMeta})
+	RegisterTypeValidator(listValidator{byPath: listMeta})
 
-	globalEachVal = &eachValTagValidator{byPath: shared, validator: nil}
+	// List-map item validator uses shared listType and listMapKey information
+	itemMeta := make(map[string]*itemMetadata) // keyed by the fieldpath
+	itemTag := &itemTagValidator{byPath: itemMeta}
+	RegisterTagValidator(itemTag)
+	RegisterTypeValidator(&itemValidator{
+		listByPath: listMeta,
+		itemByPath: itemMeta,
+	})
+	RegisterFieldValidator(&itemValidator{
+		listByPath: listMeta,
+		itemByPath: itemMeta,
+	})
+
+	globalEachVal = &eachValTagValidator{byPath: listMeta, validator: nil}
 	RegisterTagValidator(globalEachVal)
 
 	globalEachKey = &eachKeyTagValidator{validator: nil}
