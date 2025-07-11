@@ -42,18 +42,24 @@ var globalEachKey *eachKeyTagValidator
 
 func init() {
 	// Lists with list-map semantics are comprised of multiple tags, which need
-	// to share information between them.
+	// to share metadata about the list between them.
 	listMeta := map[string]*listMetadata{} // keyed by the field or type path
+
+	// Accumulate list metadata via tags.
 	RegisterTagValidator(listTypeTagValidator{byPath: listMeta})
 	RegisterTagValidator(listMapKeyTagValidator{byPath: listMeta})
 
+	// Finish work on the accumulated list metadata.
 	RegisterFieldValidator(listValidator{byPath: listMeta})
 	RegisterTypeValidator(listValidator{byPath: listMeta})
 
 	// List-map item validator uses shared listType and listMapKey information
 	itemMeta := make(map[string]*itemMetadata) // keyed by the fieldpath
-	itemTag := &itemTagValidator{byPath: itemMeta}
-	RegisterTagValidator(itemTag)
+
+	// Accumulate item metadata via tags.
+	RegisterTagValidator(&itemTagValidator{byPath: itemMeta})
+
+	// Finish work on the accumulated item metadata.
 	RegisterTypeValidator(&itemValidator{
 		listByPath: listMeta,
 		itemByPath: itemMeta,
@@ -63,9 +69,13 @@ func init() {
 		itemByPath: itemMeta,
 	})
 
+	// Iterating values of lists and maps is a special tag, which can be called
+	// directly by the code-generator logic.
 	globalEachVal = &eachValTagValidator{byPath: listMeta, validator: nil}
 	RegisterTagValidator(globalEachVal)
 
+	// Iterating keys of maps is a special tag, which can be called directly by
+	// the code-generator logic.
 	globalEachKey = &eachKeyTagValidator{validator: nil}
 	RegisterTagValidator(globalEachKey)
 }

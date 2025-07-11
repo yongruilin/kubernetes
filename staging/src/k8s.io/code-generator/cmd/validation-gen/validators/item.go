@@ -38,9 +38,9 @@ type keyValuePair struct {
 }
 
 type itemValidation struct {
-	// matcherPairs contains the key value pairs to match list items
-	matcherPairs []keyValuePair
-	// valueTag is the validation tag to apply to matched items
+	// criteria contains the field(s) on which to match
+	criteria []keyValuePair
+	// valueTag is the validation tag to apply to a matched item
 	valueTag codetags.Tag
 }
 
@@ -69,7 +69,7 @@ func (itv *itemTagValidator) GetValidations(context Context, tag codetags.Tag) (
 	// +k8s:item("map-key")=+k8s:immutable
 
 	// Parse key-value pairs from named args.
-	matcherPairs := []keyValuePair{}
+	criteria := []keyValuePair{}
 	processedKeys := sets.NewString()
 
 	for _, arg := range tag.Args {
@@ -86,14 +86,14 @@ func (itv *itemTagValidator) GetValidations(context Context, tag codetags.Tag) (
 			return Validations{}, fmt.Errorf("invalid value for key %q: %w", arg.Name, err)
 		}
 
-		matcherPairs = append(matcherPairs, keyValuePair{
+		criteria = append(criteria, keyValuePair{
 			key:       arg.Name,
 			value:     parsedValue,
 			valueType: valueType,
 		})
 	}
 
-	if len(matcherPairs) == 0 {
+	if len(criteria) == 0 {
 		return Validations{}, fmt.Errorf("no selection criteria was specified")
 	}
 
@@ -120,8 +120,8 @@ func (itv *itemTagValidator) GetValidations(context Context, tag codetags.Tag) (
 	}
 
 	itv.byPath[context.Path.String()].items = append(itv.byPath[context.Path.String()].items, itemValidation{
-		matcherPairs: matcherPairs,
-		valueTag:     *tag.ValueTag,
+		criteria: criteria,
+		valueTag: *tag.ValueTag,
 	})
 
 	// This tag doesn't generate validations directly, the itemFieldValidator does.
@@ -156,10 +156,10 @@ func (itv itemTagValidator) Docs() TagDoc {
 		Tag:    itv.TagName(),
 		Scopes: itv.ValidScopes().UnsortedList(),
 		Description: "Declares a validation for an item of a slice declared as a +k8s:listType=map. " +
-			"The item to match is declared by providing field-value pair arguments. All +k8s:listMapKey fields must be included in the field-value pair arguments.",
+			"The item to match is declared by providing field-value pair arguments. All key fields must be specified.",
 		Usage: "+k8s:item(stringKey: \"value\", intKey: 42, boolKey: true)=<validation-tag>",
-		Docs: "Arguments must be named with the JSON names of the list map key fields. " +
-			"Values can be strings (quoted or unquoted), integers, or booleans. " +
+		Docs: "Arguments must be named with the JSON names of the list-map key fields. " +
+			"Values can be strings, integers, or booleans. " +
 			"For example: +k8s:item(name: \"myname\", priority: 10, enabled: true)=<chained-validation-tag>",
 		AcceptsUnknownArgs: true,
 		Payloads: []TagPayloadDoc{{
@@ -192,8 +192,11 @@ var (
 
 func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 	itemMeta, ok := iv.itemByPath[context.Path.String()]
-	if !ok || len(itemMeta.items) == 0 {
+	if !ok {
 		return Validations{}, nil
+	}
+	if len(itemMeta.items) == 0 {
+		return Validations{}, fmt.Errorf("found item metadata with no items")
 	}
 
 	// For fields, list metadata can fall back to the type.
@@ -209,7 +212,7 @@ func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 	// Fields inherit list metadata from typedefs, but not vice-versa.
 	// If we find no listMetadata then something is wrong.
 	if !ok || !listMeta.declaredAsMap || len(listMeta.keyFields) == 0 {
-		return Validations{}, fmt.Errorf("must have +k8s:listType=map and at least one '+k8s:listMapKey=...' annotation to use +k8s:item")
+		return Validations{}, fmt.Errorf("found items with no list metadata")
 	}
 
 	t := util.NonPointer(util.NativeType(context.Type))
@@ -218,14 +221,14 @@ func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 	result := Validations{}
 
 	for _, item := range itemMeta.items {
-		if len(item.matcherPairs) != len(listMeta.keyNames) {
+		if len(item.criteria) != len(listMeta.keyNames) {
 			return Validations{}, fmt.Errorf("number of arguments does not match number of listMapKey fields")
 		}
 
 		// Validate that all listMapKeys are provided and types match
 		foundKeys := make(map[string]bool)
 		for _, keyName := range listMeta.keyNames {
-			for _, pair := range item.matcherPairs {
+			for _, pair := range item.criteria {
 				if pair.key == keyName {
 					member := util.GetMemberByJSON(elemT, pair.key)
 					if member != nil {
@@ -249,7 +252,7 @@ func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 		}
 
 		// Extract validations from the stored tag
-		subContextPath := generateFieldPathForMap(item.matcherPairs)
+		subContextPath := generateFieldPathForMap(item.criteria)
 		subContext := Context{
 			Scope:  ScopeListVal,
 			Type:   elemT,
@@ -267,7 +270,7 @@ func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 
 		// matchArg is the function that is used to select the item in new and
 		// old lists.
-		matchArg, err := createMatchFn(elemT, item.matcherPairs)
+		matchArg, err := createMatchFn(elemT, item.criteria)
 		if err != nil {
 			return Validations{}, err
 		}
@@ -318,16 +321,16 @@ func validateTypeMatch(fieldType *types.Type, value any) error {
 	return nil
 }
 
-func createMatchFn(elemT *types.Type, matcherPairs []keyValuePair) (FunctionLiteral, error) {
+func createMatchFn(elemT *types.Type, criteria []keyValuePair) (FunctionLiteral, error) {
 	var conditions []string
 
-	for _, pair := range matcherPairs {
-		member := util.GetMemberByJSON(elemT, pair.key)
+	for _, fld := range criteria {
+		member := util.GetMemberByJSON(elemT, fld.key)
 		if member == nil {
-			return FunctionLiteral{}, fmt.Errorf("no field with JSON name %q", pair.key)
+			return FunctionLiteral{}, fmt.Errorf("no field with JSON name %q", fld.key)
 		}
 		// Generate the comparison based on the field's actual type
-		rhs, err := generateComparisonRHS(member, pair.value)
+		rhs, err := generateComparisonRHS(member, fld.value)
 		if err != nil {
 			return FunctionLiteral{}, err
 		}
@@ -372,11 +375,11 @@ func generateComparisonRHS(member *types.Member, value any) (string, error) {
 
 // generateFieldPathForMap creates a field path for list map items using a JSON-like syntax.
 // The format is {"key": "value", "key2": 42, "key3": true} with quoted keys and appropriately formatted values.
-func generateFieldPathForMap(matcherPairs []keyValuePair) string {
+func generateFieldPathForMap(criteria []keyValuePair) string {
 	var pairs []string
-	for _, pair := range matcherPairs {
-		valueStr := formatValueForPath(pair.value)
-		pairs = append(pairs, fmt.Sprintf("%q: %s", pair.key, valueStr))
+	for _, fld := range criteria {
+		valueStr := formatValueForPath(fld.value)
+		pairs = append(pairs, fmt.Sprintf("%q: %s", fld.key, valueStr))
 	}
 	return fmt.Sprintf("{%s}", strings.Join(pairs, ", "))
 }
