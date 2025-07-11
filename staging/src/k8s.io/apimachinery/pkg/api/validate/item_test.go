@@ -157,7 +157,7 @@ func TestSliceItem(t *testing.T) {
 			op := operation.Operation{Type: operation.Update}
 			fp := field.NewPath("")
 
-			got := SliceItem(ctx, op, fp, tc.new, tc.old, tc.match, tc.validator)
+			got := SliceItem(ctx, op, fp, tc.new, tc.old, tc.match, SemanticDeepEqual, tc.validator)
 
 			if !reflect.DeepEqual(got, tc.expected) {
 				t.Errorf("got %v want %v", got, tc.expected)

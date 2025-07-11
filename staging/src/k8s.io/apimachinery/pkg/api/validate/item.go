@@ -19,7 +19,6 @@ package validate
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/operation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
@@ -41,6 +40,7 @@ func SliceItem[TList ~[]TItem, TItem any](
 	ctx context.Context, op operation.Operation, fldPath *field.Path,
 	newList, oldList TList,
 	matches MatchItemFn[TItem],
+	equiv MatchFunc[TItem],
 	itemValidator func(ctx context.Context, op operation.Operation, fldPath *field.Path, newObj, oldObj *TItem) field.ErrorList,
 ) field.ErrorList {
 	var matchedNew, matchedOld *TItem
@@ -64,8 +64,7 @@ func SliceItem[TList ~[]TItem, TItem any](
 		}
 	}
 
-	// TODO: Add equivFunc parameter similar to EachVal to allow custom equality comparison.
-	if op.Type == operation.Update && matchedOld != nil && equality.Semantic.DeepEqual(*matchedNew, *matchedOld) {
+	if op.Type == operation.Update && matchedOld != nil && equiv(*matchedNew, *matchedOld) {
 		return nil
 	}
 
