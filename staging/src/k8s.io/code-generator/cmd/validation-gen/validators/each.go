@@ -454,39 +454,43 @@ func (evtv eachValTagValidator) getListValidations(fldPath *field.Path, t *types
 	}
 
 	nt := util.NativeType(t)
-	for _, vfn := range validations.Functions {
-		// matchArg is the function that is used to lookup the correlated element in the old list.
-		var matchArg any = Literal("nil")
-		// equivArg is the function that is used to compare the correlated elements in the old and new lists.
-		// It would be "nil" if the matchArg is a full comparison function.
-		var equivArg any = Literal("nil")
-		// directComparable is used to determine whether we can use the direct
-		// comparison operator "==" or need to use the semantic DeepEqual when
-		// looking up and comparing correlated list elements for validation ratcheting.
-		directComparable := util.IsDirectComparable(util.NonPointer(util.NativeType(nt.Elem)))
-		switch {
-		case listMetadata != nil && listMetadata.declaredAsMap:
-			// For listType=map, we use key to lookup the correlated element in the old list.
-			// And use equivFunc to compare the correlated elements in the old and new lists.
-			matchArg = listMetadata.makeListMapMatchFunc(nt.Elem)
-			if directComparable {
-				equivArg = Identifier(validateDirectEqual)
-			} else {
-				equivArg = Identifier(validateSemanticDeepEqual)
-			}
-		case listMetadata != nil && listMetadata.declaredAsSet:
-			// For listType=set, matchArg is the equivalence check, so equivArg is nil.
-			if directComparable {
-				matchArg = Identifier(validateDirectEqual)
-			} else {
-				matchArg = Identifier(validateSemanticDeepEqual)
-			}
-		default:
-			// For non-map and non-set list, we don't lookup the correlated element in the old list.
-			// The matchArg and equivArg are both nil.
+
+	// matchArg is the function that is used to lookup the correlated element in the old list.
+	var matchArg any = Literal("nil")
+
+	// equivArg is the function that is used to compare the correlated elements in the old and new lists.
+	// It would be "nil" if the matchArg is a full comparison function.
+	var equivArg any = Literal("nil")
+
+	// directComparable is used to determine whether we can use the direct
+	// comparison operator "==" or need to use the semantic DeepEqual when
+	// looking up and comparing correlated list elements for validation ratcheting.
+	directComparable := util.IsDirectComparable(util.NonPointer(util.NativeType(nt.Elem)))
+
+	switch {
+	case listMetadata != nil && listMetadata.declaredAsMap:
+		// For listType=map, we use key to lookup the correlated element in the old list.
+		// And use equivFunc to compare the correlated elements in the old and new lists.
+		matchArg = listMetadata.makeListMapMatchFunc(nt.Elem)
+		if directComparable {
+			equivArg = Identifier(validateDirectEqual)
+		} else {
+			equivArg = Identifier(validateSemanticDeepEqual)
 		}
+	case listMetadata != nil && listMetadata.declaredAsSet:
+		// For listType=set, matchArg is the equivalence check, so equivArg is nil.
+		if directComparable {
+			matchArg = Identifier(validateDirectEqual)
+		} else {
+			matchArg = Identifier(validateSemanticDeepEqual)
+		}
+	default:
+		// For non-map and non-set list, we don't lookup the correlated element in the old list.
+		// The matchArg and equivArg are both nil.
+	}
+	for _, vfn := range validations.Functions {
 		f := Function(eachValTagName, vfn.Flags, validateEachSliceVal, matchArg, equivArg, WrapperFunction{vfn, nt.Elem})
-		result.Functions = append(result.Functions, f)
+		result.AddFunction(f)
 	}
 
 	return result, nil
@@ -505,7 +509,7 @@ func (evtv eachValTagValidator) getMapValidations(t *types.Type, validations Val
 	}
 	for _, vfn := range validations.Functions {
 		f := Function(eachValTagName, vfn.Flags, validateEachMapVal, equivArg, WrapperFunction{vfn, nt.Elem})
-		result.Functions = append(result.Functions, f)
+		result.AddFunction(f)
 	}
 
 	return result, nil
@@ -576,7 +580,7 @@ func (ektv eachKeyTagValidator) getValidations(t *types.Type, validations Valida
 	result.OpaqueKeyType = validations.OpaqueType
 	for _, vfn := range validations.Functions {
 		f := Function(eachKeyTagName, vfn.Flags, validateEachMapKey, WrapperFunction{vfn, t.Key})
-		result.Functions = append(result.Functions, f)
+		result.AddFunction(f)
 	}
 	return result, nil
 }

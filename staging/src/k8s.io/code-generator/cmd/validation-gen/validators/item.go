@@ -265,20 +265,30 @@ func (iv itemValidator) GetValidations(context Context) (Validations, error) {
 
 		result.Variables = append(result.Variables, validations.Variables...)
 
-		matchFn, err := createMatchFn(elemT, item.matcherPairs)
+		// matchArg is the function that is used to select the item in new and
+		// old lists.
+		matchArg, err := createMatchFn(elemT, item.matcherPairs)
 		if err != nil {
 			return Validations{}, err
 		}
 
+		// equivArg is the function that is used to compare the correlated
+		// elements in the old and new lists, for ratcheting.
+		var equivArg any
+
+		// directComparable is used to determine whether we can use the direct
+		// comparison operator "==" or need to use the semantic DeepEqual when
+		// looking up and comparing correlated list elements for validation ratcheting.
+		directComparable := util.IsDirectComparable(util.NonPointer(util.NativeType(elemT)))
+		if directComparable {
+			equivArg = Identifier(validateDirectEqual)
+		} else {
+			equivArg = Identifier(validateSemanticDeepEqual)
+		}
+
 		for _, vfn := range validations.Functions {
-			f := Function(
-				itemTagName,
-				vfn.Flags,
-				validateSliceItem,
-				matchFn,
-				WrapperFunction{vfn, elemT},
-			)
-			result.Functions = append(result.Functions, f)
+			f := Function(itemTagName, vfn.Flags, validateSliceItem, matchArg, equivArg, WrapperFunction{vfn, elemT})
+			result.AddFunction(f)
 		}
 	}
 
