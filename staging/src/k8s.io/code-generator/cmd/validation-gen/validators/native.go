@@ -36,10 +36,16 @@ func (d *declarativeValidationNative) TagName() string {
 }
 
 func (d *declarativeValidationNative) ValidScopes() sets.Set[Scope] {
-	return sets.New(ScopeField)
+	return sets.New(ScopeField, ScopeListVal)
 }
 
+func (d *declarativeValidationNative) LateTagValidator() {}
+
 func (d *declarativeValidationNative) GetValidations(context Context, tag codetags.Tag) (Validations, error) {
+	// Mark union members as declarative if this tag is present.
+	// This requires union processing to have run first, so we implement LateTagValidator.
+	MarkUnionDeclarative(context.ParentPath.String(), context.Member)
+	MarkZeroOrOneOfDeclarative(context.ParentPath.String(), context.Member)
 	// This tag is a marker and does not generate any validations itself.
 	return Validations{}, nil
 }
