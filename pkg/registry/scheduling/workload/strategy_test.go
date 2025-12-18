@@ -17,6 +17,7 @@ limitations under the License.
 package workload
 
 import (
+	"context"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,7 +55,8 @@ func TestWorkloadStrategy(t *testing.T) {
 
 func TestPodSchedulingStrategyCreate(t *testing.T) {
 	t.Run("simple", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
+
 		workload := workload.DeepCopy()
 
 		Strategy.PrepareForCreate(ctx, workload)
@@ -65,7 +67,7 @@ func TestPodSchedulingStrategyCreate(t *testing.T) {
 	})
 
 	t.Run("failed validation", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
 		workload := workload.DeepCopy()
 		workload.Spec.PodGroups[0].Policy.Gang.MinCount = -1
 
@@ -79,7 +81,7 @@ func TestPodSchedulingStrategyCreate(t *testing.T) {
 
 func TestPodSchedulingStrategyUpdate(t *testing.T) {
 	t.Run("no changes", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
 		workload := workload.DeepCopy()
 		newWorkload := workload.DeepCopy()
 		newWorkload.ResourceVersion = "4"
@@ -92,7 +94,7 @@ func TestPodSchedulingStrategyUpdate(t *testing.T) {
 	})
 
 	t.Run("name update", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
 		workload := workload.DeepCopy()
 		newWorkload := workload.DeepCopy()
 		newWorkload.Name += "bar"
@@ -106,7 +108,7 @@ func TestPodSchedulingStrategyUpdate(t *testing.T) {
 	})
 
 	t.Run("spec update", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
 		workload := workload.DeepCopy()
 		newWorkload := workload.DeepCopy()
 		newWorkload.Spec.ControllerRef = &scheduling.TypedLocalObjectReference{
@@ -123,7 +125,7 @@ func TestPodSchedulingStrategyUpdate(t *testing.T) {
 	})
 
 	t.Run("invalid spec update", func(t *testing.T) {
-		ctx := genericapirequest.NewDefaultContext()
+		ctx := requestInfoContext()
 		workload := workload.DeepCopy()
 		newWorkload := workload.DeepCopy()
 		newWorkload.Spec.PodGroups[0].Policy.Gang.MinCount = 4
@@ -134,5 +136,15 @@ func TestPodSchedulingStrategyUpdate(t *testing.T) {
 		if len(errs) == 0 {
 			t.Errorf("Expected validation error")
 		}
+	})
+}
+
+func requestInfoContext() context.Context {
+	ctx := genericapirequest.NewDefaultContext()
+	return genericapirequest.WithRequestInfo(ctx, &genericapirequest.RequestInfo{
+		APIGroup:   "scheduling.k8s.io",
+		APIVersion: "v1alpha1",
+		Resource:   "workloads",
+		Namespace:  metav1.NamespaceDefault,
 	})
 }
