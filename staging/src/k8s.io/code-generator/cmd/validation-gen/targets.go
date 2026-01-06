@@ -342,6 +342,16 @@ func GetTargets(context *generator.Context, args *Args) []generator.Target {
 			if checkMainTag(t.SecondClosestCommentLines, "true") {
 				return true
 			}
+
+			// skip types that are Lists
+			if strings.HasSuffix(t.Name.Name, "List") && t.Kind == types.Struct {
+				for _, member := range t.Members {
+					if member.Name == "Items" {
+						return false
+					}
+				}
+			}
+
 			// all types
 			for _, v := range typesWith {
 				if v == "*" && !namer.IsPrivateGoName(t.Name.Name) {
