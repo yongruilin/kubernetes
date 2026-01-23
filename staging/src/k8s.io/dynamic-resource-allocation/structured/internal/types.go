@@ -18,11 +18,16 @@ package internal
 
 import (
 	"context"
+	"errors"
 
 	v1 "k8s.io/api/core/v1"
 	resourceapi "k8s.io/api/resource/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
+
+// ErrFailedAllocationOnNode is an empty sentinel for errors.Is.
+// See allocator.go for details.
+var ErrFailedAllocationOnNode = errors.New("")
 
 type DeviceClassLister interface {
 	// List returns a list of all DeviceClasses.
@@ -36,6 +41,7 @@ type DeviceClassLister interface {
 // This interface is also broader than the public one.
 type Allocator interface {
 	Allocate(ctx context.Context, node *v1.Node, claims []*resourceapi.ResourceClaim) (finalResult []resourceapi.AllocationResult, finalErr error)
+	Channel() AllocatorChannel
 }
 
 // AllocatorExtended is an optional interface. Not all variants implement it.
@@ -51,6 +57,14 @@ type Stats struct {
 	// got called.
 	NumAllocateOneInvocations int64
 }
+
+type AllocatorChannel string
+
+const (
+	Experimental = "experimental"
+	Stable       = "stable"
+	Incubating   = "incubating"
+)
 
 // Features control optional functionality during ResourceClaim allocation.
 // Each entry must correspond to at least one control flow change. Entries can

@@ -273,6 +273,9 @@ type NodePluginScores struct {
 	Scores []PluginScore
 	// TotalScore is the total score in Scores.
 	TotalScore int64
+	// Randomizer is used to provide randomness
+	// when randomizing nodes within a common score.
+	Randomizer int
 }
 
 // PluginScore is a struct with plugin/extender name and score.
@@ -361,6 +364,19 @@ type PostFilterResult struct {
 	*NominatingInfo
 }
 
+// PreBindPreFlightResult wraps needed info for scheduler framework to act upon PreBindPreFlight phase.
+type PreBindPreFlightResult struct {
+	// AllowParallel indicates whether this plugin's PreBind method can be run
+	// in parallel with other plugins during PreBind phase.
+	// The scheduler groups consecutive plugins that return AllowParallel: true
+	// and runs them in parallel.
+	// A plugin that returns AllowParallel: false breaks the parallel group
+	// and runs sequentially.
+	// Note: skipped plugins are effectively ignored, but if a skipped plugin returns
+	// AllowParallel: false, it still breaks the parallel group of adjacent plugins.
+	AllowParallel bool
+}
+
 // Plugin is the parent type for all the scheduling framework plugins.
 type Plugin interface {
 	Name() string
@@ -435,7 +451,8 @@ type PreFilterExtensions interface {
 }
 
 // PreFilterPlugin is an interface that must be implemented by "PreFilter" plugins.
-// These plugins are called at the beginning of the scheduling cycle.
+// These plugins are called at the beginning of the scheduling cycle. Plugins that implement PreFilterPlugin should
+// also implement SignPlugin to enable batching optimizations.
 type PreFilterPlugin interface {
 	Plugin
 	// PreFilter is called at the beginning of the scheduling cycle. All PreFilter
@@ -463,7 +480,8 @@ type PreFilterPlugin interface {
 // These plugins should return "Success", "Unschedulable" or "Error" in Status.code.
 // However, the scheduler accepts other valid codes as well.
 // Anything other than "Success" will lead to exclusion of the given host from
-// running the pod.
+// running the pod. Plugins that implement FilterPlugin should
+// also implement SignPlugin to enable batching optimizations.
 type FilterPlugin interface {
 	Plugin
 	// Filter is called by the scheduling framework.
@@ -518,7 +536,8 @@ type PostFilterPlugin interface {
 // PreScorePlugin is an interface for "PreScore" plugin. PreScore is an
 // informational extension point. Plugins will be called with a list of nodes
 // that passed the filtering phase. A plugin may use this data to update internal
-// state or to generate logs/metrics.
+// state or to generate logs/metrics. Plugins that implement PreScorePlugin should
+// also implement SignPlugin to enable batching optimizations.
 type PreScorePlugin interface {
 	Plugin
 	// PreScore is called by the scheduling framework after a list of nodes
@@ -538,7 +557,8 @@ type ScoreExtensions interface {
 }
 
 // ScorePlugin is an interface that must be implemented by "Score" plugins to rank
-// nodes that passed the filtering phase.
+// nodes that passed the filtering phase. Plugins that implement ScorePlugin should
+// also implement SignPlugin to enable batching optimizations.
 type ScorePlugin interface {
 	Plugin
 	// Score is called on each filtered node. It must return success and an integer
@@ -574,11 +594,13 @@ type ReservePlugin interface {
 // These plugins are called before a pod being scheduled.
 type PreBindPlugin interface {
 	Plugin
-	// PreBindPreFlight is called before PreBind, and the plugin is supposed to return Success, Skip, or Error status.
+	// PreBindPreFlight is called before PreBind, and the plugin is supposed to return two values:
+	// - PreBindPreFlightResult (nil is valid, and means results with the zero values on all fields).
+	// - Success, Skip, or Error status.
 	// If it returns Success, it means this PreBind plugin will handle this pod.
 	// If it returns Skip, it means this PreBind plugin has nothing to do with the pod, and PreBind will be skipped.
 	// This function should be lightweight, and shouldn't do any actual operation, e.g., creating a volume etc.
-	PreBindPreFlight(ctx context.Context, state CycleState, p *v1.Pod, nodeName string) *Status
+	PreBindPreFlight(ctx context.Context, state CycleState, p *v1.Pod, nodeName string) (*PreBindPreFlightResult, *Status)
 
 	// PreBind is called before binding a pod. All prebind plugins must return
 	// success or the pod will be rejected and won't be sent for binding.
@@ -620,6 +642,59 @@ type BindPlugin interface {
 	// it must return Skip in its Status code. If a bind plugin returns an Error, the
 	// pod is rejected and will not be bound.
 	Bind(ctx context.Context, state CycleState, p *v1.Pod, nodeName string) *Status
+}
+
+// A portion of a pod signature. The sign fragments from all plugins are combined
+// together to create a unified signature.
+type SignFragment struct {
+	// Pod signature fragments are identified by a key, i.e., fragments with the same key
+	// should contain the same value for the same pod. Plugin authors can return the same SignFragment
+	// from multiple plugins, the framework just ignores duplicates. This allows plugins to share signers easily.
+	//
+	// Fragment names can be found in k8s.io/kube-scheduler/framework/signers.go. New fragment names for
+	// in-tree plugins should be added there, and custom plugins can also use them.
+	// Simple SignFragments which return a field should have names that follow the field name they return.
+	// So a SignFragment that returns NodeName would have the key:
+	//
+	//	"v1.Pod.Spec.NodeName"
+	//
+	// If a SignFragment does some processing on the resource, its name should include the path to the base of the state it uses,
+	// and then suffix this with a descriptive function name followed by (). So, for example, a SignFragment that only returns
+	// Ephemeral volumes might use the key:
+	//
+	//	"v1.Pod.Volumes.EphemeralVolumes()"
+	Key string
+
+	// The value of a SignFragment must be a json-marshallable object. Remember that we need to compare these across pods, so
+	// plugins should ensure that lists where order doesn't matter are sorted, for example.
+	Value any
+}
+
+// The signature for a given pod after all of the results from plugins are consolidated.
+type PodSignature []byte
+
+// SignPlugin is an interface that should be implemented by plugins that either filter or score
+// pods to enable batching and gang scheduling optimizations.
+// Each plugin returns SignFragments used to build a single signature per pod entering the scheduling cycle,
+// and the scheduler uses signatures to determine whether it can use a cached scheduling result, or needs to
+// recompute the prioritized nodes.
+//
+// If an enabled plugin that does Scoring, Prescoring, Filtering or Prefiltering does not implement this interface we will turn off batching for all pods.
+type SignPlugin interface {
+	Plugin
+	// SignPod returns SignFragments for use in batching. This is called at every scheduling cycle
+	// and is used to construct a signature builder used for pods. (KEP-5598).
+	//
+	// The sign fragments from all the plugins are combined to create a single signature. Only one fragment
+	// with a given key will be included.
+	//
+	// Status means:
+	//   - Success: the signer can sign the pod, accompanied by a set of signature fragments to be included.
+	//   - Unschedulable: the signer refuses to sign the pod, meaning the pod is not eligible for opportunistic batching optimization.
+	//   - Error: the signer hits something _unexpected_ and cannot build sign(s). A framework runtime just
+	//     proceeds with scheduling this pod without opportunistic batching optimization like Unschedulable,
+	//     but just report errors to logs.
+	SignPod(ctx context.Context, pod *v1.Pod) ([]SignFragment, *Status)
 }
 
 // Handle provides data and some tools that plugins can use. It is
@@ -672,6 +747,10 @@ type Handle interface {
 	// A non-default implementation can be plugged into the framework to simulate the state of DRA objects.
 	SharedDRAManager() SharedDRAManager
 
+	// SharedCSIManager can be used to obtain CSINode objects, and track changes to them in-memory.
+	// A non-default implementation can be plugged into the framework to simulate the state of CSINode objects.
+	SharedCSIManager() CSIManager
+
 	// RunFilterPluginsWithNominatedPods runs the set of configured filter plugins for nominated pod on the given node.
 	RunFilterPluginsWithNominatedPods(ctx context.Context, state CycleState, pod *v1.Pod, info NodeInfo) *Status
 
@@ -689,6 +768,15 @@ type Handle interface {
 	// Use this to ensure the scheduler's view of the cluster remains consistent.
 	// This is non-nil if the SchedulerAsyncAPICalls feature gate is enabled.
 	APICacher() APICacher
+
+	// ProfileName returns the profile name associated to a profile.
+	ProfileName() string
+
+	// WorkloadManager can be used to provide workload-aware scheduling.
+	WorkloadManager() WorkloadManager
+
+	// Sign a pod.
+	SignPod(ctx context.Context, pod *v1.Pod, recordPluginStats bool) PodSignature
 }
 
 // Parallelizer helps run scheduling operations in parallel chunks where possible, to improve performance and CPU utilization.

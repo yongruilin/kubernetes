@@ -85,6 +85,7 @@ var _ fwk.PreBindPlugin = &VolumeBinding{}
 var _ fwk.PreScorePlugin = &VolumeBinding{}
 var _ fwk.ScorePlugin = &VolumeBinding{}
 var _ fwk.EnqueueExtensions = &VolumeBinding{}
+var _ fwk.SignPlugin = &VolumeBinding{}
 
 // Name is the name of the plugin used in Registry and configurations.
 const Name = names.VolumeBinding
@@ -92,6 +93,13 @@ const Name = names.VolumeBinding
 // Name returns name of the plugin. It is used in logs, etc.
 func (pl *VolumeBinding) Name() string {
 	return Name
+}
+
+// Feasibility and scoring based on the non-synthetic volume sources.
+func (pl *VolumeBinding) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
+	return []fwk.SignFragment{
+		{Key: fwk.VolumesSignerName, Value: fwk.VolumesSigner(pod)},
+	}, nil
 }
 
 // EventsToRegister returns the possible events that may make a Pod
@@ -544,20 +552,21 @@ var errNoPodVolumeForNode = fmt.Errorf("no pod volume found for node")
 
 // PreBindPreFlight is called before PreBind, and determines whether PreBind is going to do something for this pod, or not.
 // It checks state.podVolumesByNode to determine whether there are any pod volumes for the node and hence the plugin has to handle them at PreBind.
-func (pl *VolumeBinding) PreBindPreFlight(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) *fwk.Status {
+func (pl *VolumeBinding) PreBindPreFlight(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodeName string) (*fwk.PreBindPreFlightResult, *fwk.Status) {
+	result := &fwk.PreBindPreFlightResult{AllowParallel: true}
 	s, err := getStateData(state)
 	if err != nil {
-		return fwk.AsStatus(err)
+		return result, fwk.AsStatus(err)
 	}
 	if s.allBound {
 		// no need to bind volumes
-		return fwk.NewStatus(fwk.Skip)
+		return result, fwk.NewStatus(fwk.Skip)
 	}
 
 	if _, ok := s.podVolumesByNode[nodeName]; !ok {
-		return fwk.AsStatus(fmt.Errorf("%w %q", errNoPodVolumeForNode, nodeName))
+		return result, fwk.AsStatus(fmt.Errorf("%w %q", errNoPodVolumeForNode, nodeName))
 	}
-	return nil
+	return result, nil
 }
 
 // PreBind will make the API update with the assumed bindings and wait until
@@ -626,7 +635,10 @@ func New(ctx context.Context, plArgs runtime.Object, fh fwk.Handle, fts feature.
 		CSIDriverInformer:          fh.SharedInformerFactory().Storage().V1().CSIDrivers(),
 		CSIStorageCapacityInformer: fh.SharedInformerFactory().Storage().V1().CSIStorageCapacities(),
 	}
-	binder := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), fts, podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
+	binder, err := NewVolumeBinder(klog.FromContext(ctx), fh.ClientSet(), fts, podInformer, nodeInformer, csiNodeInformer, pvcInformer, pvInformer, storageClassInformer, capacityCheck, time.Duration(args.BindTimeoutSeconds)*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build volume binder: %w", err)
+	}
 
 	// build score function
 	var scorer volumeCapacityScorer

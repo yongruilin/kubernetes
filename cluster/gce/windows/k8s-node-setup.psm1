@@ -1013,7 +1013,6 @@ function Start-WorkerServices {
   # otherwise kubelet and kube-proxy will not be able to run properly.
   $instance_name = "$(Get-InstanceMetadata 'name' | Out-String)"
   $default_kubelet_args = @(`
-      "--pod-infra-container-image=${env:INFRA_CONTAINER}",
       "--hostname-override=${instance_name}"
   )
 
@@ -2309,7 +2308,7 @@ function DownloadAndInstall-AuthProviderGcpBinary {
       Log-Output "Installing auth provider gcp binaries"
       $tmp_dir = 'C:\k8s_tmp'
       New-Item -Force -ItemType 'directory' $tmp_dir | Out-Null
-      $url = "${env:AUTH_PROVIDER_GCP_STORAGE_PATH}/${env:AUTH_PROVIDER_GCP_VERSION}/windows_amd64/$filename"
+      $url = "${env:AUTH_PROVIDER_GCP_STORAGE_PATH}/${env:AUTH_PROVIDER_GCP_VERSION}/auth-provider-gcp/windows/amd64/$filename"
       MustDownload-File -Hash $AUTH_PROVIDER_GCP_HASH_WINDOWS_AMD64 -Algorithm SHA512 -OutFile $tmp_dir\$filename -URLs $url
       Move-Item -Force $tmp_dir\$filename ${env:AUTH_PROVIDER_GCP_WINDOWS_BIN_DIR}
       Remove-Item -Force -Recurse $tmp_dir

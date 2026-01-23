@@ -59,7 +59,7 @@ LIMITED_SWAP=${LIMITED_SWAP:-""}
 
 # required for cni installation
 CNI_CONFIG_DIR=${CNI_CONFIG_DIR:-/etc/cni/net.d}
-CNI_PLUGINS_VERSION=${CNI_PLUGINS_VERSION:-"v1.8.0"}
+CNI_PLUGINS_VERSION=${CNI_PLUGINS_VERSION:-"v1.9.0"}
 # The arch of the CNI binary, if not set, will be fetched based on the value of `uname -m`
 CNI_TARGETARCH=${CNI_TARGETARCH:-""}
 CNI_PLUGINS_URL="https://github.com/containernetworking/plugins/releases/download"
@@ -1404,8 +1404,8 @@ if [[ "${KUBETEST_IN_DOCKER:-}" == "true" ]]; then
   # configure and start containerd
   echo "configuring containerd"
   containerd config default > /etc/containerd/config.toml
-  sed -ie 's|root = "/var/lib/containerd"|root = "/docker-graph/containerd/daemon"|' /etc/containerd/config.toml
-  sed -ie 's|state = "/run/containerd"|state = "/var/run/docker/containerd/daemon"|' /etc/containerd/config.toml
+  sed -ie 's|root = ./var/lib/containerd.|root = "/docker-graph/containerd/daemon"|' /etc/containerd/config.toml
+  sed -ie 's|state = ./run/containerd.|state = "/var/run/docker/containerd/daemon"|' /etc/containerd/config.toml
   sed -ie 's|enable_cdi = false|enable_cdi = true|' /etc/containerd/config.toml
 
   echo "starting containerd"

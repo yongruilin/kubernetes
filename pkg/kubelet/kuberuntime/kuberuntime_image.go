@@ -33,7 +33,7 @@ import (
 func (m *kubeGenericRuntimeManager) PullImage(ctx context.Context, image kubecontainer.ImageSpec, credentials []crededentialprovider.TrackedAuthConfig, podSandboxConfig *runtimeapi.PodSandboxConfig) (string, *crededentialprovider.TrackedAuthConfig, error) {
 	logger := klog.FromContext(ctx)
 	img := image.Image
-	imgSpec := toRuntimeAPIImageSpec(image)
+	imgSpec := ToRuntimeAPIImageSpec(image)
 
 	if len(credentials) == 0 {
 		logger.V(3).Info("Pulling image without credentials", "image", img)
@@ -70,11 +70,11 @@ func (m *kubeGenericRuntimeManager) PullImage(ctx context.Context, image kubecon
 	return "", nil, utilerrors.NewAggregate(pullErrs)
 }
 
-// GetImageRef gets the ID of the image which has already been in
+// GetImageRef gets the reference (digest or ID) of the image which has already been in
 // the local storage. It returns ("", nil) if the image isn't in the local storage.
 func (m *kubeGenericRuntimeManager) GetImageRef(ctx context.Context, image kubecontainer.ImageSpec) (string, error) {
 	logger := klog.FromContext(ctx)
-	resp, err := m.imageService.ImageStatus(ctx, toRuntimeAPIImageSpec(image), false)
+	resp, err := m.imageService.ImageStatus(ctx, ToRuntimeAPIImageSpec(image), false)
 	if err != nil {
 		logger.Error(err, "Failed to get image status", "image", image.Image)
 		return "", err
@@ -82,12 +82,16 @@ func (m *kubeGenericRuntimeManager) GetImageRef(ctx context.Context, image kubec
 	if resp.Image == nil {
 		return "", nil
 	}
+	// Prefer returning a digest reference over an image ID to ensure pull record lookups work correctly.
+	if len(resp.Image.RepoDigests) > 0 {
+		return resp.Image.RepoDigests[0], nil
+	}
 	return resp.Image.Id, nil
 }
 
 func (m *kubeGenericRuntimeManager) GetImageSize(ctx context.Context, image kubecontainer.ImageSpec) (uint64, error) {
 	logger := klog.FromContext(ctx)
-	resp, err := m.imageService.ImageStatus(ctx, toRuntimeAPIImageSpec(image), false)
+	resp, err := m.imageService.ImageStatus(ctx, ToRuntimeAPIImageSpec(image), false)
 	if err != nil {
 		logger.Error(err, "Failed to get image status", "image", image.Image)
 		return 0, err
@@ -126,7 +130,7 @@ func (m *kubeGenericRuntimeManager) ListImages(ctx context.Context) ([]kubeconta
 			Size:        int64(img.Size),
 			RepoTags:    img.RepoTags,
 			RepoDigests: img.RepoDigests,
-			Spec:        toKubeContainerImageSpec(img),
+			Spec:        ToKubeContainerImageSpec(img),
 			Pinned:      img.Pinned,
 		})
 	}

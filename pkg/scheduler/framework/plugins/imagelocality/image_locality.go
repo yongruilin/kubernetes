@@ -22,6 +22,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	fwk "k8s.io/kube-scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
 )
@@ -40,6 +41,7 @@ type ImageLocality struct {
 }
 
 var _ fwk.ScorePlugin = &ImageLocality{}
+var _ fwk.SignPlugin = &ImageLocality{}
 
 // Name is the name of the plugin used in the plugin registry and configurations.
 const Name = names.ImageLocality
@@ -47,6 +49,21 @@ const Name = names.ImageLocality
 // Name returns name of the plugin. It is used in logs, etc.
 func (pl *ImageLocality) Name() string {
 	return Name
+}
+
+// Filtering and scoring based on container image names.
+func (pl *ImageLocality) SignPod(ctx context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
+	nameSet := sets.New[string]()
+
+	containers := []v1.Container{}
+	containers = append(containers, pod.Spec.Containers...)
+	containers = append(containers, pod.Spec.InitContainers...)
+
+	for _, container := range containers {
+		nameSet.Insert(normalizedImageName(container.Image))
+	}
+	names := sets.List(nameSet)
+	return []fwk.SignFragment{{Key: fwk.ImageNamesSignerName, Value: names}}, nil
 }
 
 // Score invoked at the score extension point.
@@ -86,7 +103,8 @@ func calculatePriority(sumScores int64, numContainers int) int64 {
 	return fwk.MaxNodeScore * (sumScores - minThreshold) / (maxThreshold - minThreshold)
 }
 
-// sumImageScores returns the sum of image scores of all the containers that are already on the node.
+// sumImageScores returns the total image score for all container images in the Pod spec,
+// including regular containers, init containers, and image volumes, that already exist on the node.
 // Each image receives a raw score of its size, scaled by scaledImageScore. The raw scores are later used to calculate
 // the final score.
 func sumImageScores(nodeInfo fwk.NodeInfo, pod *v1.Pod, totalNumNodes int) int64 {
@@ -98,6 +116,14 @@ func sumImageScores(nodeInfo fwk.NodeInfo, pod *v1.Pod, totalNumNodes int) int64
 	}
 	for _, container := range pod.Spec.Containers {
 		if state, ok := nodeInfo.GetImageStates()[normalizedImageName(container.Image)]; ok {
+			sum += scaledImageScore(state, totalNumNodes)
+		}
+	}
+	for _, volume := range pod.Spec.Volumes {
+		if volume.Image == nil {
+			continue
+		}
+		if state, ok := nodeInfo.GetImageStates()[normalizedImageName(volume.Image.Reference)]; ok {
 			sum += scaledImageScore(state, totalNumNodes)
 		}
 	}

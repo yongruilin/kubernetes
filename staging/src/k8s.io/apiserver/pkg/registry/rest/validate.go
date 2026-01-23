@@ -18,6 +18,7 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -68,12 +69,31 @@ func WithSubresourceMapper(subresourceMapper GroupVersionKindProvider) Validatio
 	}
 }
 
+// WithNormalizationRules sets the normalization rules for validation.
+func WithNormalizationRules(rules []field.NormalizationRule) ValidationConfig {
+	return func(config *validationConfigOption) {
+		config.normalizationRules = rules
+	}
+}
+
+// WithDeclarativeNative marks the validation configuration to indicate that it includes
+// declarative validations that are defined *only* declaratively, lacking corresponding imperative validation.
+// When set, declarative validation is always executed regardless of feature gates. Errors marked as
+// declarative-native are separated from the full set and returned alongside imperative errors.
+func WithDeclarativeNative() ValidationConfig {
+	return func(config *validationConfigOption) {
+		config.containsDeclarativeNative = true
+	}
+}
+
 type validationConfigOption struct {
-	opType               operation.Type
-	options              []string
-	takeover             bool
-	subresourceGVKMapper GroupVersionKindProvider
-	validationIdentifier string
+	opType                    operation.Type
+	options                   []string
+	takeover                  bool
+	subresourceGVKMapper      GroupVersionKindProvider
+	validationIdentifier      string
+	normalizationRules        []field.NormalizationRule
+	containsDeclarativeNative bool
 }
 
 // validateDeclaratively validates obj and oldObj against declarative
@@ -146,9 +166,9 @@ func parseSubresourcePath(subresourcePath string) ([]string, error) {
 
 // compareDeclarativeErrorsAndEmitMismatches checks for mismatches between imperative and declarative validation
 // and logs + emits metrics when inconsistencies are found
-func compareDeclarativeErrorsAndEmitMismatches(ctx context.Context, imperativeErrs, declarativeErrs field.ErrorList, takeover bool, validationIdentifier string) {
+func compareDeclarativeErrorsAndEmitMismatches(ctx context.Context, imperativeErrs, declarativeErrs field.ErrorList, takeover bool, validationIdentifier string, normalizationRules []field.NormalizationRule) {
 	logger := klog.FromContext(ctx)
-	mismatchDetails := gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs, takeover)
+	mismatchDetails := gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs, takeover, normalizationRules)
 	for _, detail := range mismatchDetails {
 		// Log information about the mismatch using contextual logger
 		logger.Error(nil, detail)
@@ -160,7 +180,7 @@ func compareDeclarativeErrorsAndEmitMismatches(ctx context.Context, imperativeEr
 
 // gatherDeclarativeValidationMismatches compares imperative and declarative validation errors
 // and returns detailed information about any mismatches found. Errors are compared via type, field, and origin
-func gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs field.ErrorList, takeover bool) []string {
+func gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs field.ErrorList, takeover bool, normalizationRules []field.NormalizationRule) []string {
 	var mismatchDetails []string
 	// short circuit here to minimize allocs for usual case of 0 validation errors
 	if len(imperativeErrs) == 0 && len(declarativeErrs) == 0 {
@@ -171,7 +191,7 @@ func gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs field
 	if takeover {
 		recommendation = "Consider disabling the DeclarativeValidationTakeover feature gate to keep data persisted in etcd consistent with prior versions of Kubernetes."
 	}
-	fuzzyMatcher := field.ErrorMatcher{}.ByType().ByField().ByOrigin().RequireOriginWhenInvalid()
+	fuzzyMatcher := field.ErrorMatcher{}.ByType().ByOrigin().RequireOriginWhenInvalid().ByFieldNormalized(normalizationRules)
 	exactMatcher := field.ErrorMatcher{}.Exactly()
 
 	// Dedupe imperative errors of exact error matches as they are
@@ -253,8 +273,8 @@ func gatherDeclarativeValidationMismatches(imperativeErrs, declarativeErrs field
 }
 
 // createDeclarativeValidationPanicHandler returns a function with panic recovery logic
-// that will increment the panic metric and either log or append errors based on the takeover parameter.
-func createDeclarativeValidationPanicHandler(ctx context.Context, errs *field.ErrorList, takeover bool, validationIdentifier string) func() {
+// that will increment the panic metric and either log or append errors based on the shouldFail parameter.
+func createDeclarativeValidationPanicHandler(ctx context.Context, errs *field.ErrorList, shouldFail bool, validationIdentifier string) func() {
 	logger := klog.FromContext(ctx)
 	return func() {
 		if r := recover(); r != nil {
@@ -262,11 +282,11 @@ func createDeclarativeValidationPanicHandler(ctx context.Context, errs *field.Er
 			validationmetrics.Metrics.IncDeclarativeValidationPanicMetric(validationIdentifier)
 
 			const errorFmt = "panic during declarative validation: %v"
-			if takeover {
-				// If takeover is enabled, output as a validation error as authoritative validator panicked and validation should error
+			if shouldFail {
+				// If shouldFail is enabled, output as a validation error as authoritative validator panicked and validation should error
 				*errs = append(*errs, field.InternalError(nil, fmt.Errorf(errorFmt, r)))
 			} else {
-				// if takeover not enabled, log the panic as an error message
+				// if shouldFail not enabled, log the panic as an error message
 				logger.Error(nil, fmt.Sprintf(errorFmt, r))
 			}
 		}
@@ -276,35 +296,38 @@ func createDeclarativeValidationPanicHandler(ctx context.Context, errs *field.Er
 // panicSafeValidateFunc wraps an validation function with panic recovery logic.
 // The returned function will execute the wrapped function and handle any panics by
 // incrementing the panic metric, and logging an error message
-// if takeover=false, and adding a validation error if takeover=true.
+// if shouldFail=false, and adding a validation error if shouldFail=true.
 func panicSafeValidateFunc(
 	validateUpdateFunc func(ctx context.Context, scheme *runtime.Scheme, obj, oldObj runtime.Object, o *validationConfigOption) field.ErrorList,
-	takeover bool, validationIdentifier string,
+	shouldFail bool, validationIdentifier string,
 ) func(ctx context.Context, scheme *runtime.Scheme, obj, oldObj runtime.Object, o *validationConfigOption) field.ErrorList {
 	return func(ctx context.Context, scheme *runtime.Scheme, obj, oldObj runtime.Object, o *validationConfigOption) (errs field.ErrorList) {
-		defer createDeclarativeValidationPanicHandler(ctx, &errs, takeover, validationIdentifier)()
+		defer createDeclarativeValidationPanicHandler(ctx, &errs, shouldFail, validationIdentifier)()
 
 		return validateUpdateFunc(ctx, scheme, obj, oldObj, o)
 	}
 }
 
-func metricIdentifier(ctx context.Context, obj runtime.Object, opType operation.Type) (string, error) {
+func metricIdentifier(ctx context.Context, scheme *runtime.Scheme, obj runtime.Object, opType operation.Type) (string, error) {
+	var errs error
 	var identifier string
-	var err error
 
 	identifier = "unknown_resource"
 	// Use kind for identifier.
-	if obj != nil {
-		gvk := obj.GetObjectKind().GroupVersionKind()
-		if gvk.Kind != "" {
-			identifier = strings.ToLower(gvk.Kind)
+	if obj != nil && scheme != nil {
+		gvks, _, err := scheme.ObjectKinds(obj)
+		if err != nil {
+			errs = errors.Join(errs, err)
+		}
+		if len(gvks) > 0 {
+			identifier = strings.ToLower(gvks[0].Kind)
 		}
 	}
 
 	// Use requestInfo for subresource.
 	requestInfo, found := genericapirequest.RequestInfoFrom(ctx)
 	if !found {
-		err = fmt.Errorf("could not find requestInfo in context")
+		errs = errors.Join(errs, fmt.Errorf("could not find requestInfo in context"))
 	} else if len(requestInfo.Subresource) > 0 {
 		// subresource can be a path, so replace '/' with '_'
 		identifier += "_" + strings.ReplaceAll(requestInfo.Subresource, "/", "_")
@@ -316,25 +339,20 @@ func metricIdentifier(ctx context.Context, obj runtime.Object, opType operation.
 	case operation.Update:
 		identifier += "_update"
 	default:
-		if err == nil {
-			err = fmt.Errorf("unknown operation type: %v", opType)
-		}
+		errs = errors.Join(errs, fmt.Errorf("unknown operation type: %v", opType))
 		identifier += "_unknown_op"
 	}
-	return identifier, err
+	return identifier, errs
 }
 
-// ValidateDeclarativelyWithMigrationChecks is a helper function that encapsulates the logic for running declarative validation.
-// It checks if the DeclarativeValidation feature gate is enabled, generates a validation identifier,
-// runs declarative validation, compares the results with imperative validation, and merges the errors if takeover is enabled.
+// ValidateDeclarativelyWithMigrationChecks runs declarative validation, and conditionally compares results
+// with imperative validation and merges errors based on the feature gate and `takeover` flag.
+// It proceeds if either the DeclarativeValidation feature gate is enabled or `containsDeclarativeNative` is set.
 func ValidateDeclarativelyWithMigrationChecks(ctx context.Context, scheme *runtime.Scheme, obj, oldObj runtime.Object, errs field.ErrorList, opType operation.Type, configOpts ...ValidationConfig) field.ErrorList {
-	if !utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation) {
-		return errs
-	}
-
+	declarativeValidationEnabled := utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidation)
 	takeover := utilfeature.DefaultFeatureGate.Enabled(features.DeclarativeValidationTakeover)
 
-	validationIdentifier, err := metricIdentifier(ctx, obj, opType)
+	validationIdentifier, err := metricIdentifier(ctx, scheme, obj, opType)
 	if err != nil {
 		// Log the error, but continue with the best-effort identifier.
 		klog.FromContext(ctx).Error(err, "failed to generate complete validation identifier for declarative validation")
@@ -350,15 +368,43 @@ func ValidateDeclarativelyWithMigrationChecks(ctx context.Context, scheme *runti
 		opt(cfg)
 	}
 
-	// Call the panic-safe wrapper with the real validation function.
-	declarativeErrs := panicSafeValidateFunc(validateDeclaratively, cfg.takeover, cfg.validationIdentifier)(ctx, scheme, obj, oldObj, cfg)
-
-	compareDeclarativeErrorsAndEmitMismatches(ctx, errs, declarativeErrs, takeover, validationIdentifier)
-
-	if takeover {
-		errs = append(errs.RemoveCoveredByDeclarative(), declarativeErrs...)
+	// Short-circuit if neither DeclarativeValidation is enabled nor the object contains declarative native validation.
+	if !(declarativeValidationEnabled || cfg.containsDeclarativeNative) {
+		return errs
 	}
 
+	// Call the panic-safe wrapper with the real validation function.
+	declarativeErrs := panicSafeValidateFunc(validateDeclaratively, cfg.takeover || cfg.containsDeclarativeNative, cfg.validationIdentifier)(ctx, scheme, obj, oldObj, cfg)
+
+	mirroredDVErrors := field.ErrorList{}
+	dvNativeErrors := field.ErrorList{}
+
+	// When declarative native validation is present, we need to separate declarative native errors
+	// from mirrored declarative errors. This is to avoid comparing declarative native errors (which
+	// have no imperative equivalent) with handwritten imperative errors.
+	if cfg.containsDeclarativeNative {
+		for _, err := range declarativeErrs {
+			if err.DeclarativeNative {
+				dvNativeErrors = append(dvNativeErrors, err)
+			} else if err.Type == field.ErrorTypeInternal {
+				// Internal errors should fail both types of validation.
+				dvNativeErrors = append(dvNativeErrors, err)
+				mirroredDVErrors = append(mirroredDVErrors, err)
+			} else {
+				mirroredDVErrors = append(mirroredDVErrors, err)
+			}
+		}
+	} else {
+		mirroredDVErrors = declarativeErrs
+	}
+
+	if declarativeValidationEnabled {
+		compareDeclarativeErrorsAndEmitMismatches(ctx, errs, mirroredDVErrors, takeover, validationIdentifier, cfg.normalizationRules)
+		if takeover {
+			errs = append(errs.RemoveCoveredByDeclarative(), mirroredDVErrors...)
+		}
+	}
+	errs = append(errs, dvNativeErrors...)
 	return errs
 }
 

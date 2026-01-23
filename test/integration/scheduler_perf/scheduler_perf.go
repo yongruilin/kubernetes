@@ -293,7 +293,7 @@ type testCase struct {
 	Labels []string
 	// DefaultThresholdMetricSelector defines default metric used for threshold comparison.
 	// It is only populated to workloads without their ThresholdMetricSelector set.
-	// If nil, the default metric is set to "SchedulingThroughput".
+	// If nil, the default metric is set to "SchedulingThroughput" with "Average" data bucket.
 	// Optional
 	DefaultThresholdMetricSelector *thresholdMetricSelector
 }
@@ -332,8 +332,14 @@ type workload struct {
 	// The comparison is performed for op with CollectMetrics set to true.
 	// If the measured value is below the threshold, the workload's test case will fail.
 	// If set to zero, the threshold check is disabled.
+	//
+	// May contain a single value or map of topic name to value.
+	// The single value is used if there is no entry in the map for the topic name.
+	// Topic names are passed to RunBenchmarkPerfScheduling. This approach
+	// makes it possible to reuse the same test cases in different configurations.
+	//
 	// Optional
-	Threshold float64
+	Threshold thresholds
 	// ThresholdMetricSelector defines to what metric the Threshold should be compared.
 	// If nil, the metric is set to DefaultThresholdMetricSelector of the testCase.
 	// If DefaultThresholdMetricSelector is nil, the metric is set to "SchedulingThroughput".
@@ -346,8 +352,13 @@ type workload struct {
 }
 
 func (w *workload) isValid(mcc *metricsCollectorConfig) error {
-	if w.Threshold < 0 {
-		return fmt.Errorf("invalid Threshold=%f; should be non-negative", w.Threshold)
+	if w.Threshold.value < 0 {
+		return fmt.Errorf("invalid Threshold=%f; should be non-negative", w.Threshold.value)
+	}
+	for topicName, value := range w.Threshold.valuesByTopic {
+		if value < 0 {
+			return fmt.Errorf("invalid Threshold=%f for topic %q; should be non-negative", value, topicName)
+		}
 	}
 
 	return w.ThresholdMetricSelector.isValid(mcc)
@@ -361,10 +372,33 @@ func (w *workload) setDefaults(testCaseThresholdMetricSelector *thresholdMetricS
 		w.ThresholdMetricSelector = testCaseThresholdMetricSelector
 		return
 	}
-	// By default, SchedulingThroughput should be compared with the threshold.
+	// By default, SchedulingThroughput Average should be compared with the threshold.
 	w.ThresholdMetricSelector = &thresholdMetricSelector{
-		Name: "SchedulingThroughput",
+		Name:       "SchedulingThroughput",
+		DataBucket: "Average",
 	}
+}
+
+type thresholds struct {
+	value         float64
+	valuesByTopic map[string]float64
+}
+
+func (t *thresholds) UnmarshalJSON(text []byte) error {
+	if errFloat64 := json.Unmarshal(text, &t.value); errFloat64 != nil {
+		// Not a plain number. Let's try as map.
+		if errMap := json.Unmarshal(text, &t.valuesByTopic); errMap != nil {
+			return fmt.Errorf("expected either float64 or topic name -> float64 map: %w, %w", errFloat64, errMap)
+		}
+	}
+	return nil
+}
+
+func (t *thresholds) Get(topicName string) float64 {
+	if value, ok := t.valuesByTopic[topicName]; ok {
+		return value
+	}
+	return t.value
 }
 
 // thresholdMetricSelector defines the name and labels of metric to compare with threshold.
@@ -373,6 +407,8 @@ type thresholdMetricSelector struct {
 	Name string
 	// Labels of the metric. All of them needs to match the metric's labels to assume equality.
 	Labels map[string]string
+	// DataBucket specifies which data bucket should be compared against the threshold.
+	DataBucket string
 	// ExpectLower defines whether the threshold should denote the maximum allowable value of the metric.
 	// If false, the threshold defines minimum allowable value.
 	// Optional
@@ -380,6 +416,9 @@ type thresholdMetricSelector struct {
 }
 
 func (ms thresholdMetricSelector) isValid(mcc *metricsCollectorConfig) error {
+	if ms.DataBucket == "" {
+		return fmt.Errorf("dataBucket should be set for metric %v", ms.Name)
+	}
 	if ms.Name == "SchedulingThroughput" {
 		return nil
 	}
@@ -1115,13 +1154,13 @@ func setupTestCase(t testing.TB, tc *testCase, featureGates map[featuregate.Feat
 	// Only emulate v1.33 when QueueingHints is explicitly disabled.
 	if qhEnabled, exists := featureGates[features.SchedulerQueueingHints]; exists && !qhEnabled {
 		featuregatetesting.SetFeatureGateEmulationVersionDuringTest(t, utilfeature.DefaultFeatureGate, version.MustParse("1.33"))
+	} else if _, found := featureGates[features.OpportunisticBatching]; !found {
+		if featureGates == nil {
+			featureGates = map[featuregate.Feature]bool{}
+		}
+		featureGates[features.OpportunisticBatching] = false
 	}
-
-	// Iterate by sorted feature name, to make it deterministic and put AllAlpha/Beta first to enable
-	// overriding that choice.
-	for _, name := range slices.Sorted(maps.Keys(featureGates)) {
-		featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, name, featureGates[name])
-	}
+	featuregatetesting.SetFeatureGatesDuringTest(t, utilfeature.DefaultFeatureGate, featureGates)
 
 	// 30 minutes should be plenty enough even for the 5000-node tests.
 	timeout := 30 * time.Minute
@@ -1138,13 +1177,9 @@ func setupTestCase(t testing.TB, tc *testCase, featureGates map[featuregate.Feat
 }
 
 func featureGatesMerge(src map[featuregate.Feature]bool, overrides map[featuregate.Feature]bool) map[featuregate.Feature]bool {
-	if len(src) == 0 {
-		return maps.Clone(overrides)
-	}
-	result := maps.Clone(src)
-	for feature, enabled := range overrides {
-		result[feature] = enabled
-	}
+	result := make(map[featuregate.Feature]bool)
+	maps.Copy(result, src)
+	maps.Copy(result, overrides)
 	return result
 }
 
@@ -1236,7 +1271,7 @@ func RunBenchmarkPerfScheduling(b *testing.B, configFile string, topicName strin
 						}
 					}
 
-					results, err := runWorkload(tCtx, tc, w, scheduler, informerFactory)
+					results, err := runWorkload(tCtx, tc, w, topicName, scheduler, informerFactory)
 					if err != nil {
 						tCtx.Fatalf("Error running workload %s: %s", w.Name, err)
 					}
@@ -1303,7 +1338,15 @@ func RunBenchmarkPerfScheduling(b *testing.B, configFile string, topicName strin
 			}
 		})
 	}
-	if err := dataItems2JSONFile(dataItems, b.Name()+"_benchmark_"+topicName); err != nil {
+	// Different top-level BenchmarkPerfScheduling* tests are supported as long as they use unique topic names.
+	// The final JSON file then is always called BenchmarkPerfScheduling_benchmark_<topic name>_<date+time>.json
+	// because that is what perf-dash is configured to read:
+	// https://github.com/kubernetes/perf-tests/blob/581139e45e79cf04b9c2777b82677957f1e7f90b/perfdash/config.go#L520-L525
+	namePrefix := b.Name()
+	namePrefix = regexp.MustCompile(`^BenchmarkPerfScheduling[^/]*`).ReplaceAllString(namePrefix, "BenchmarkPerfScheduling")
+	namePrefix = strings.ReplaceAll(namePrefix, "/", "_")
+	namePrefix += "_benchmark_" + topicName
+	if err := dataItems2JSONFile(dataItems, namePrefix); err != nil {
 		b.Fatalf("unable to write measured data %+v: %v", dataItems, err)
 	}
 }
@@ -1337,7 +1380,7 @@ func RunIntegrationPerfScheduling(t *testing.T, configFile string) {
 						t.Fatalf("workload %s is not valid: %v", w.Name, err)
 					}
 
-					_, err = runWorkload(tCtx, tc, w, scheduler, informerFactory)
+					_, err = runWorkload(tCtx, tc, w, "" /* topic name not relevant */, scheduler, informerFactory)
 					if err != nil {
 						tCtx.Fatalf("Error running workload %s: %s", w.Name, err)
 					}
@@ -1433,12 +1476,20 @@ func compareMetricWithThreshold(items []DataItem, threshold float64, metricSelec
 	if threshold == 0 {
 		return nil
 	}
+	dataBucket := metricSelector.DataBucket
 	for _, item := range items {
-		if item.Labels["Metric"] == metricSelector.Name && labelsMatch(item.Labels, metricSelector.Labels) && !valueWithinThreshold(item.Data["Average"], threshold, metricSelector.ExpectLower) {
+		if item.Labels["Metric"] != metricSelector.Name || !labelsMatch(item.Labels, metricSelector.Labels) {
+			continue
+		}
+		dataItem, ok := item.Data[dataBucket]
+		if !ok {
+			return fmt.Errorf("%s: no data present for %q metric %q bucket", item.Labels["Name"], metricSelector.Name, dataBucket)
+		}
+		if !valueWithinThreshold(dataItem, threshold, metricSelector.ExpectLower) {
 			if metricSelector.ExpectLower {
-				return fmt.Errorf("%s: expected %s Average to be lower: got %f, want %f", item.Labels["Name"], metricSelector.Name, item.Data["Average"], threshold)
+				return fmt.Errorf("%s: expected %q %q to be lower: got %f, want %f", item.Labels["Name"], metricSelector.Name, dataBucket, dataItem, threshold)
 			}
-			return fmt.Errorf("%s: expected %s Average to be higher: got %f, want %f", item.Labels["Name"], metricSelector.Name, item.Data["Average"], threshold)
+			return fmt.Errorf("%s: expected %q %q to be higher: got %f, want %f", item.Labels["Name"], metricSelector.Name, dataBucket, dataItem, threshold)
 		}
 	}
 	return nil
@@ -1526,10 +1577,11 @@ type WorkloadExecutor struct {
 	throughputErrorMargin        float64
 	testCase                     *testCase
 	workload                     *workload
+	topicName                    string
 	nextNodeIndex                int
 }
 
-func runWorkload(tCtx ktesting.TContext, tc *testCase, w *workload, scheduler *scheduler.Scheduler, informerFactory informers.SharedInformerFactory) ([]DataItem, error) {
+func runWorkload(tCtx ktesting.TContext, tc *testCase, w *workload, topicName string, scheduler *scheduler.Scheduler, informerFactory informers.SharedInformerFactory) ([]DataItem, error) {
 	b, benchmarking := tCtx.TB().(*testing.B)
 	if benchmarking {
 		start := time.Now()
@@ -1569,6 +1621,7 @@ func runWorkload(tCtx ktesting.TContext, tc *testCase, w *workload, scheduler *s
 		throughputErrorMargin:        throughputErrorMargin,
 		testCase:                     tc,
 		workload:                     w,
+		topicName:                    topicName,
 	}
 
 	tCtx.TB().Cleanup(func() {
@@ -1706,7 +1759,7 @@ func (e *WorkloadExecutor) runSleepOp(op *sleepOp) error {
 }
 
 func (e *WorkloadExecutor) runStopCollectingMetrics(opIndex int) error {
-	items, err := stopCollectingMetrics(e.tCtx, e.collectorCtx, &e.collectorWG, e.workload.Threshold, *e.workload.ThresholdMetricSelector, opIndex, e.collectors)
+	items, err := stopCollectingMetrics(e.tCtx, e.collectorCtx, &e.collectorWG, e.workload.Threshold.Get(e.topicName), *e.workload.ThresholdMetricSelector, opIndex, e.collectors)
 	if err != nil {
 		return err
 	}
@@ -1760,7 +1813,7 @@ func (e *WorkloadExecutor) runCreatePodsOp(opIndex int, op *createPodsOp) error 
 		// CollectMetrics and SkipWaitToCompletion can never be true at the
 		// same time, so if we're here, it means that all pods have been
 		// scheduled.
-		items, err := stopCollectingMetrics(e.tCtx, e.collectorCtx, &e.collectorWG, e.workload.Threshold, *e.workload.ThresholdMetricSelector, opIndex, e.collectors)
+		items, err := stopCollectingMetrics(e.tCtx, e.collectorCtx, &e.collectorWG, e.workload.Threshold.Get(e.topicName), *e.workload.ThresholdMetricSelector, opIndex, e.collectors)
 		if err != nil {
 			return err
 		}
@@ -1982,6 +2035,7 @@ func getTestDataCollectors(podInformer coreinformers.PodInformer, name string, n
 		newThroughputCollector(podInformer, map[string]string{"Name": name}, labelSelector, namespaces, throughputErrorMargin),
 		newMetricsCollector(mcc, map[string]string{"Name": name}),
 		newMemoryCollector(map[string]string{"Name": name}, 500*time.Millisecond),
+		newSchedulingDurationCollector(map[string]string{"Name": name}),
 	}
 }
 

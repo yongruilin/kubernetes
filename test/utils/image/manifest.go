@@ -33,7 +33,6 @@ import (
 
 // RegistryList holds public and private image registries
 type RegistryList struct {
-	GcAuthenticatedRegistry  string `yaml:"gcAuthenticatedRegistry"`
 	PromoterE2eRegistry      string `yaml:"promoterE2eRegistry"`
 	BuildImageRegistry       string `yaml:"buildImageRegistry"`
 	InvalidRegistry          string `yaml:"invalidRegistry"`
@@ -130,16 +129,13 @@ func readFromURL(url string, writer io.Writer) error {
 var (
 	initRegistry = RegistryList{
 		// TODO: https://github.com/kubernetes/kubernetes/issues/130271
-		// Eliminate GcAuthenticatedRegistry.
-		GcAuthenticatedRegistry: "gcr.io/authenticated-image-pulling",
-		PromoterE2eRegistry:     "registry.k8s.io/e2e-test-images",
-		BuildImageRegistry:      "registry.k8s.io/build-image",
-		InvalidRegistry:         "invalid.registry.k8s.io/invalid",
-		GcEtcdRegistry:          "registry.k8s.io",
-		GcRegistry:              "registry.k8s.io",
-		SigStorageRegistry:      "registry.k8s.io/sig-storage",
-		// TODO: https://github.com/kubernetes/kubernetes/issues/130271
 		// Eliminate PrivateRegistry.
+		PromoterE2eRegistry:      "registry.k8s.io/e2e-test-images",
+		BuildImageRegistry:       "registry.k8s.io/build-image",
+		InvalidRegistry:          "invalid.registry.k8s.io/invalid",
+		GcEtcdRegistry:           "registry.k8s.io",
+		GcRegistry:               "registry.k8s.io",
+		SigStorageRegistry:       "registry.k8s.io/sig-storage",
 		PrivateRegistry:          "gcr.io/k8s-authenticated-test",
 		DockerLibraryRegistry:    "docker.io/library",
 		CloudProviderGcpRegistry: "registry.k8s.io/cloud-provider-gcp",
@@ -158,17 +154,11 @@ const (
 	// Agnhost image
 	Agnhost
 	// AgnhostPrivate image
-	// TODO: https://github.com/kubernetes/kubernetes/issues/130271
-	// Eliminate this.
 	AgnhostPrivate
 	// APIServer image
 	APIServer
 	// AppArmorLoader image
 	AppArmorLoader
-	// AuthenticatedAlpine image
-	// TODO: https://github.com/kubernetes/kubernetes/issues/130271
-	// Eliminate this.
-	AuthenticatedAlpine
 	// BusyBox image
 	BusyBox
 	// DistrolessIptables Image
@@ -179,8 +169,8 @@ const (
 	InvalidRegistryImage
 	// IpcUtils image
 	IpcUtils
-	// JessieDnsutils image
-	JessieDnsutils
+	// GlibcDnsTesting image (formerly JessieDnsutils)
+	GlibcDnsTesting
 	// Kitten image
 	Kitten
 	// Nautilus image
@@ -195,8 +185,8 @@ const (
 	NodePerfNpbEp
 	// NodePerfNpbIs image
 	NodePerfNpbIs
-	// NodePerfTfWideDeep image
-	NodePerfTfWideDeep
+	// NodePerfPytorchWideDeep image
+	NodePerfPytorchWideDeep
 	// Nonewprivs image
 	Nonewprivs
 	// NonRoot runs with a default user of 1234
@@ -219,17 +209,16 @@ const (
 func initImageConfigs(list RegistryList) (map[ImageID]Config, map[ImageID]Config) {
 	configs := map[ImageID]Config{}
 	configs[AgnhostPrev] = Config{list.PromoterE2eRegistry, "agnhost", "2.55"}
-	configs[Agnhost] = Config{list.PromoterE2eRegistry, "agnhost", "2.56"}
+	configs[Agnhost] = Config{list.PromoterE2eRegistry, "agnhost", "2.61"}
 	configs[AgnhostPrivate] = Config{list.PrivateRegistry, "agnhost", "2.6"}
-	configs[AuthenticatedAlpine] = Config{list.GcAuthenticatedRegistry, "alpine", "3.7"}
 	configs[APIServer] = Config{list.PromoterE2eRegistry, "sample-apiserver", "1.29.2"}
 	configs[AppArmorLoader] = Config{list.PromoterE2eRegistry, "apparmor-loader", "1.4"}
 	configs[BusyBox] = Config{list.PromoterE2eRegistry, "busybox", "1.37.0-1"}
-	configs[DistrolessIptables] = Config{list.BuildImageRegistry, "distroless-iptables", "v0.8.2"}
-	configs[Etcd] = Config{list.GcEtcdRegistry, "etcd", "3.6.4-0"}
+	configs[DistrolessIptables] = Config{list.BuildImageRegistry, "distroless-iptables", "v0.8.6"}
+	configs[Etcd] = Config{list.GcEtcdRegistry, "etcd", "3.6.7-0"}
 	configs[InvalidRegistryImage] = Config{list.InvalidRegistry, "alpine", "3.1"}
 	configs[IpcUtils] = Config{list.PromoterE2eRegistry, "ipc-utils", "1.3"}
-	configs[JessieDnsutils] = Config{list.PromoterE2eRegistry, "jessie-dnsutils", "1.7"}
+	configs[GlibcDnsTesting] = Config{list.PromoterE2eRegistry, "glibc-dns-testing", "2.0.0"}
 	configs[Kitten] = Config{list.PromoterE2eRegistry, "kitten", "1.7"}
 	configs[Nautilus] = Config{list.PromoterE2eRegistry, "nautilus", "1.7"}
 	configs[NFSProvisioner] = Config{list.SigStorageRegistry, "nfs-provisioner", "v4.0.8"}
@@ -237,7 +226,7 @@ func initImageConfigs(list RegistryList) (map[ImageID]Config, map[ImageID]Config
 	configs[NginxNew] = Config{list.PromoterE2eRegistry, "nginx", "1.15-4"}
 	configs[NodePerfNpbEp] = Config{list.PromoterE2eRegistry, "node-perf/npb-ep", "1.2"}
 	configs[NodePerfNpbIs] = Config{list.PromoterE2eRegistry, "node-perf/npb-is", "1.2"}
-	configs[NodePerfTfWideDeep] = Config{list.PromoterE2eRegistry, "node-perf/tf-wide-deep", "1.3"}
+	configs[NodePerfPytorchWideDeep] = Config{list.PromoterE2eRegistry, "node-perf/pytorch-wide-deep", "1.0.0"}
 	configs[Nonewprivs] = Config{list.PromoterE2eRegistry, "nonewprivs", "1.3"}
 	configs[NonRoot] = Config{list.PromoterE2eRegistry, "nonroot", "1.4"}
 	// Pause - when these values are updated, also update cmd/kubelet/app/options/container_runtime.go
@@ -268,8 +257,7 @@ func GetMappedImageConfigs(originalImageConfigs map[ImageID]Config, repo string)
 	configs := make(map[ImageID]Config)
 	for i, config := range originalImageConfigs {
 		switch i {
-		case InvalidRegistryImage, AuthenticatedAlpine,
-			AgnhostPrivate:
+		case InvalidRegistryImage, AgnhostPrivate:
 			// These images are special and can't be run out of the cloud - some because they
 			// are authenticated, and others because they are not real images. Tests that depend
 			// on these images can't be run without access to the public internet.
@@ -400,8 +388,6 @@ func replaceRegistryInImageURLWithList(imageURL string, reg RegistryList) (strin
 		registryAndUser = reg.PromoterE2eRegistry
 	case initRegistry.BuildImageRegistry:
 		registryAndUser = reg.BuildImageRegistry
-	case initRegistry.GcAuthenticatedRegistry:
-		registryAndUser = reg.GcAuthenticatedRegistry
 	case initRegistry.DockerLibraryRegistry:
 		registryAndUser = reg.DockerLibraryRegistry
 	case initRegistry.CloudProviderGcpRegistry:
