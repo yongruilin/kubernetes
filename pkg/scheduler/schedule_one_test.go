@@ -17,6 +17,7 @@ limitations under the License.
 package scheduler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -917,33 +918,6 @@ func TestSchedulerScheduleOne(t *testing.T) {
 			eventReason:        "FailedScheduling",
 		},
 		{
-			name: "pod with existing nominated node name on scheduling error keeps nomination",
-			sendPod: func() *v1.Pod {
-				p := podWithID("foo", "")
-				p.Status.NominatedNodeName = "existing-node"
-				return p
-			}(),
-			injectSchedulingError: schedulingErr,
-			mockScheduleResult:    scheduleResultOk,
-			expectError:           schedulingErr,
-			expectErrorPod: func() *v1.Pod {
-				p := podWithID("foo", "")
-				p.Status.NominatedNodeName = "existing-node"
-				return p
-			}(),
-			expectPodInBackoffQ: func() *v1.Pod {
-				p := podWithID("foo", "")
-				p.Status.NominatedNodeName = "existing-node"
-				return p
-			}(),
-			// Depending on the timing, if asyncAPICallsEnabled, the NNN update might not be sent yet while checking the expectNominatedNodeName.
-			// So, asyncAPICallsEnabled is set to false.
-			asyncAPICallsEnabled:                   ptr.To(false),
-			nominatedNodeNameForExpectationEnabled: ptr.To(true),
-			expectNominatedNodeName:                "existing-node",
-			eventReason:                            "FailedScheduling",
-		},
-		{
 			name: "pod with existing nominated node name on scheduling error clears nomination",
 			sendPod: func() *v1.Pod {
 				p := podWithID("foo", "")
@@ -965,9 +939,9 @@ func TestSchedulerScheduleOne(t *testing.T) {
 			}(),
 			// Depending on the timing, if asyncAPICallsEnabled, the NNN update might not be sent yet while checking the expectNominatedNodeName.
 			// So, asyncAPICallsEnabled is set to false.
-			asyncAPICallsEnabled:                   ptr.To(false),
-			nominatedNodeNameForExpectationEnabled: ptr.To(false),
-			eventReason:                            "FailedScheduling",
+			asyncAPICallsEnabled:    ptr.To(false),
+			expectNominatedNodeName: "",
+			eventReason:             "FailedScheduling",
 		},
 	}
 
@@ -986,7 +960,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 				for _, nominatedNodeNameForExpectationEnabled := range nominatedNodeNameForExpectationEnabled {
 					if (asyncAPICallsEnabled || nominatedNodeNameForExpectationEnabled) && !qHintEnabled {
 						// If the QHint feature gate is disabled, NominatedNodeNameForExpectation and SchedulerAsyncAPICalls cannot be enabled
-						// because that means users set the emilation version to 1.33 or later.
+						// because that means users set the emulation version to 1.33 or later.
 						continue
 					}
 					t.Run(fmt.Sprintf("%s (Queueing hints enabled: %v, Async API calls enabled: %v, NominatedNodeNameForExpectation enabled: %v)", item.name, qHintEnabled, asyncAPICallsEnabled, nominatedNodeNameForExpectationEnabled), func(t *testing.T) {
@@ -1019,7 +993,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 							defer apiDispatcher.Close()
 						}
 
-						internalCache := internalcache.New(ctx, 30*time.Second, apiDispatcher)
+						internalCache := internalcache.New(ctx, apiDispatcher)
 						cache := &fakecache.Cache{
 							Cache: internalCache,
 							ForgetFunc: func(pod *v1.Pod) {
@@ -1121,6 +1095,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 						}
 						informerFactory.Start(ctx.Done())
 						informerFactory.WaitForCacheSync(ctx.Done())
+						sched.nodeInfoSnapshot = internalcache.NewEmptySnapshot()
 						sched.ScheduleOne(ctx)
 
 						if item.podToAdmit != nil {
@@ -1157,11 +1132,7 @@ func TestSchedulerScheduleOne(t *testing.T) {
 							t.Errorf("Unexpected error. Wanted %v, got %v", item.expectError.Error(), gotError.Error())
 						}
 						if item.expectError != nil {
-							var expectedNominatingInfo *fwk.NominatingInfo
-							// Check nominatingInfo expectation based on feature gate
-							if !nominatedNodeNameForExpectationEnabled {
-								expectedNominatingInfo = &fwk.NominatingInfo{NominatingMode: fwk.ModeOverride, NominatedNodeName: ""}
-							}
+							expectedNominatingInfo := &fwk.NominatingInfo{NominatingMode: fwk.ModeOverride, NominatedNodeName: ""}
 							if diff := cmp.Diff(expectedNominatingInfo, gotNominatingInfo); diff != "" {
 								t.Errorf("Unexpected nominatingInfo (-want,+got):\n%s", diff)
 							}
@@ -1201,6 +1172,230 @@ func TestSchedulerScheduleOne(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+type constSigPluginConfig struct {
+	name       string
+	signature  []fwk.SignFragment
+	status     *fwk.Status
+	pluginType string
+}
+
+type constantSigPlugin struct {
+	config *constSigPluginConfig
+}
+
+var _ fwk.FilterPlugin = &constantSigPlugin{}
+var _ fwk.PreFilterPlugin = &constantSigPlugin{}
+var _ fwk.ScorePlugin = &constantSigPlugin{}
+var _ fwk.PreScorePlugin = &constantSigPlugin{}
+
+func (pl *constantSigPlugin) Name() string {
+	return pl.config.name
+}
+
+func (pl *constantSigPlugin) Filter(_ context.Context, _ fwk.CycleState, _ *v1.Pod, _ fwk.NodeInfo) *fwk.Status {
+	return fwk.NewStatus(fwk.Success)
+}
+
+func (pl *constantSigPlugin) PreFilter(ctx context.Context, state fwk.CycleState, p *v1.Pod, nodes []fwk.NodeInfo) (*fwk.PreFilterResult, *fwk.Status) {
+	return nil, fwk.NewStatus(fwk.Success)
+}
+
+func (pl *constantSigPlugin) PreFilterExtensions() fwk.PreFilterExtensions {
+	return nil
+}
+
+func (pl *constantSigPlugin) PreScore(ctx context.Context, state fwk.CycleState, pod *v1.Pod, nodes []fwk.NodeInfo) *fwk.Status {
+	return fwk.NewStatus(fwk.Success)
+}
+
+func (pl *constantSigPlugin) Score(ctx context.Context, state fwk.CycleState, p *v1.Pod, nodeInfo fwk.NodeInfo) (int64, *fwk.Status) {
+	return 1, fwk.NewStatus(fwk.Success)
+}
+
+func (pl *constantSigPlugin) ScoreExtensions() fwk.ScoreExtensions {
+	return nil
+}
+
+func (pl *constantSigPlugin) SignPod(_ context.Context, pod *v1.Pod) ([]fwk.SignFragment, *fwk.Status) {
+	return pl.config.signature, pl.config.status
+}
+
+func newConstSigFactory(config *constSigPluginConfig) frameworkruntime.PluginFactory {
+	return func(_ context.Context, _ runtime.Object, handle fwk.Handle) (fwk.Plugin, error) {
+		return &constantSigPlugin{config: config}, nil
+	}
+}
+
+func TestSignatures(t *testing.T) {
+	table := []struct {
+		name              string
+		plugins           []*constSigPluginConfig
+		expectedSignature []byte
+	}{
+		{
+			name:              "no plugins",
+			expectedSignature: []byte(`{"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "single filter",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "filter",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "single prefilter",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "prefilter",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "single score",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "score",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "single prescore",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "prescore",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "two plugins",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "filter",
+				},
+				{
+					name:       "ConstSig2",
+					signature:  []fwk.SignFragment{{Key: "test2", Value: 17}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "score",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"test2":17,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "plugin with multiple fragments",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}, {Key: "test2", Value: 17}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "filter",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"test2":17,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "overlapping fragments",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "filter",
+				},
+				{
+					name:       "ConstSig2",
+					signature:  []fwk.SignFragment{{Key: "test", Value: 16}},
+					status:     fwk.NewStatus(fwk.Success),
+					pluginType: "score",
+				},
+			},
+			expectedSignature: []byte(`{"test":16,"v1.Pod.Spec.SchedulerName":"test-scheduler"}`),
+		},
+		{
+			name: "unsignable plugin",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					status:     fwk.NewStatus(fwk.Unschedulable),
+					pluginType: "filter",
+				},
+			},
+			expectedSignature: nil,
+		},
+		{
+			name: "error plugin",
+			plugins: []*constSigPluginConfig{
+				{
+					name:       "ConstSig",
+					status:     fwk.NewStatus(fwk.Error),
+					pluginType: "filter",
+				},
+			},
+			expectedSignature: nil,
+		},
+	}
+	for _, item := range table {
+		t.Run(item.name, func(t *testing.T) {
+			_, ctx := ktesting.NewTestContext(t)
+			snapshot := internalcache.NewSnapshot([]*v1.Pod{}, []*v1.Node{})
+			informerFactory := informers.NewSharedInformerFactory(nil, 0)
+
+			plugins := []tf.RegisterPluginFunc{
+				tf.RegisterQueueSortPlugin(queuesort.Name, queuesort.New),
+				tf.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
+			}
+
+			for _, pl := range item.plugins {
+				switch pl.pluginType {
+				case "filter":
+					plugins = append(plugins, tf.RegisterFilterPlugin(pl.name, newConstSigFactory(pl)))
+				case "prefilter":
+					plugins = append(plugins, tf.RegisterPreFilterPlugin(pl.name, newConstSigFactory(pl)))
+				case "score":
+					plugins = append(plugins, tf.RegisterScorePlugin(pl.name, newConstSigFactory(pl), 1))
+				case "prescore":
+					plugins = append(plugins, tf.RegisterPreScorePlugin(pl.name, newConstSigFactory(pl)))
+				}
+			}
+
+			schedFramework, err := tf.NewFramework(ctx,
+				plugins,
+				testSchedulerName,
+				frameworkruntime.WithSnapshotSharedLister(snapshot),
+				frameworkruntime.WithInformerFactory(informerFactory),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			signature := schedFramework.SignPod(ctx, podWithID("foo", ""), true)
+			if !bytes.Equal(signature, item.expectedSignature) {
+				t.Fatal(fmt.Errorf("Test %s got signature %s, expected %s", item.name, signature, item.expectedSignature))
+			}
+		})
 	}
 }
 
@@ -1393,7 +1588,7 @@ func TestScheduleOneMarksPodAsProcessedBeforePreBind(t *testing.T) {
 						defer apiDispatcher.Close()
 					}
 
-					internalCache := internalcache.New(ctx, 30*time.Second, apiDispatcher)
+					internalCache := internalcache.New(ctx, apiDispatcher)
 					cache := &fakecache.Cache{
 						Cache: internalCache,
 						ForgetFunc: func(pod *v1.Pod) {
@@ -1478,6 +1673,7 @@ func TestScheduleOneMarksPodAsProcessedBeforePreBind(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					sched.nodeInfoSnapshot = internalcache.NewEmptySnapshot()
 					sched.ScheduleOne(ctx)
 					<-called
 
@@ -1563,88 +1759,6 @@ func podListContainsPod(list []*v1.Pod, pod *v1.Pod) bool {
 	return false
 }
 
-func TestSchedulerNoPhantomPodAfterExpire(t *testing.T) {
-	for _, asyncAPICallsEnabled := range []bool{true, false} {
-		t.Run(fmt.Sprintf("Async API calls enabled: %v", asyncAPICallsEnabled), func(t *testing.T) {
-			logger, ctx := ktesting.NewTestContext(t)
-			ctx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			queuedPodStore := clientcache.NewFIFO(clientcache.MetaNamespaceKeyFunc)
-			client := clientsetfake.NewClientset()
-			bindingChan := interruptOnBind(client)
-
-			var apiDispatcher *apidispatcher.APIDispatcher
-			if asyncAPICallsEnabled {
-				apiDispatcher = apidispatcher.New(client, 16, apicalls.Relevances)
-				apiDispatcher.Run(logger)
-				defer apiDispatcher.Close()
-			}
-
-			scache := internalcache.New(ctx, 100*time.Millisecond, apiDispatcher)
-			pod := podWithPort("pod.Name", "", 8080)
-			node := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", UID: types.UID("node1")}}
-			scache.AddNode(logger, &node)
-
-			fns := []tf.RegisterPluginFunc{
-				tf.RegisterQueueSortPlugin(queuesort.Name, queuesort.New),
-				tf.RegisterBindPlugin(defaultbinder.Name, defaultbinder.New),
-				tf.RegisterPluginAsExtensions(nodeports.Name, frameworkruntime.FactoryAdapter(feature.Features{}, nodeports.New), "Filter", "PreFilter"),
-			}
-			scheduler, errChan := setupTestSchedulerWithOnePodOnNode(ctx, t, client, queuedPodStore, scache, apiDispatcher, pod, &node, bindingChan, fns...)
-
-			waitPodExpireChan := make(chan struct{})
-			timeout := make(chan struct{})
-			go func() {
-				for {
-					select {
-					case <-timeout:
-						return
-					default:
-					}
-					pods, err := scache.PodCount()
-					if err != nil {
-						errChan <- fmt.Errorf("cache.List failed: %w", err)
-						return
-					}
-					if pods == 0 {
-						close(waitPodExpireChan)
-						return
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-			}()
-			// waiting for the assumed pod to expire
-			select {
-			case err := <-errChan:
-				t.Fatal(err)
-			case <-waitPodExpireChan:
-			case <-time.After(wait.ForeverTestTimeout):
-				close(timeout)
-				t.Fatalf("timeout timeout in waiting pod expire after %v", wait.ForeverTestTimeout)
-			}
-
-			// We use conflicted pod ports to incur fit predicate failure if first pod not removed.
-			secondPod := podWithPort("bar", "", 8080)
-			if err := queuedPodStore.Add(secondPod); err != nil {
-				t.Fatal(err)
-			}
-			scheduler.ScheduleOne(ctx)
-			select {
-			case b := <-bindingChan:
-				expectBinding := &v1.Binding{
-					ObjectMeta: metav1.ObjectMeta{Name: "bar", UID: types.UID("bar")},
-					Target:     v1.ObjectReference{Kind: "Node", Name: node.Name},
-				}
-				if diff := cmp.Diff(expectBinding, b); diff != "" {
-					t.Errorf("Unexpected binding (-want,+got):\n%s", diff)
-				}
-			case <-time.After(wait.ForeverTestTimeout):
-				t.Fatalf("timeout in binding after %v", wait.ForeverTestTimeout)
-			}
-		})
-	}
-}
-
 func TestSchedulerNoPhantomPodAfterDelete(t *testing.T) {
 	for _, asyncAPICallsEnabled := range []bool{true, false} {
 		t.Run(fmt.Sprintf("Async API calls enabled: %v", asyncAPICallsEnabled), func(t *testing.T) {
@@ -1662,7 +1776,7 @@ func TestSchedulerNoPhantomPodAfterDelete(t *testing.T) {
 				defer apiDispatcher.Close()
 			}
 
-			scache := internalcache.New(ctx, 10*time.Minute, apiDispatcher)
+			scache := internalcache.New(ctx, apiDispatcher)
 			firstPod := podWithPort("pod.Name", "", 8080)
 			node := v1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node1", UID: types.UID("node1")}}
 			scache.AddNode(logger, &node)
@@ -1751,7 +1865,7 @@ func TestSchedulerFailedSchedulingReasons(t *testing.T) {
 				defer apiDispatcher.Close()
 			}
 
-			scache := internalcache.New(ctx, 10*time.Minute, apiDispatcher)
+			scache := internalcache.New(ctx, apiDispatcher)
 
 			// Design the baseline for the pods, and we will make nodes that don't fit it later.
 			var cpu = int64(4)
@@ -2059,7 +2173,7 @@ func TestSchedulerBinding(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				cache := internalcache.New(ctx, 100*time.Millisecond, apiDispatcher)
+				cache := internalcache.New(ctx, apiDispatcher)
 				if asyncAPICallsEnabled {
 					informerFactory := informers.NewSharedInformerFactory(client, 0)
 					ar := metrics.NewMetricsAsyncRecorder(10, 1*time.Second, ctx.Done())
@@ -2097,7 +2211,7 @@ func TestSchedulerBinding(t *testing.T) {
 	}
 }
 
-func TestUpdatePod(t *testing.T) {
+func TestUpdatePodStatus(t *testing.T) {
 	tests := []struct {
 		name                     string
 		currentPodConditions     []v1.PodCondition
@@ -2353,12 +2467,10 @@ func TestUpdatePod(t *testing.T) {
 
 func Test_SelectHost(t *testing.T) {
 	tests := []struct {
-		name              string
-		list              []fwk.NodePluginScores
-		topNodesCnt       int
-		possibleNodes     sets.Set[string]
-		possibleNodeLists [][]fwk.NodePluginScores
-		wantError         error
+		name             string
+		list             []fwk.NodePluginScores
+		expectedNodeList []fwk.NodePluginScores
+		wantError        error
 	}{
 		{
 			name: "unique properly ordered scores",
@@ -2366,122 +2478,54 @@ func Test_SelectHost(t *testing.T) {
 				{Name: "node1", TotalScore: 1},
 				{Name: "node2", TotalScore: 2},
 			},
-			topNodesCnt:   2,
-			possibleNodes: sets.New("node2"),
-			possibleNodeLists: [][]fwk.NodePluginScores{
-				{
-					{Name: "node2", TotalScore: 2},
-					{Name: "node1", TotalScore: 1},
-				},
-			},
-		},
-		{
-			name: "numberOfNodeScoresToReturn > len(list)",
-			list: []fwk.NodePluginScores{
-				{Name: "node1", TotalScore: 1},
+			expectedNodeList: []fwk.NodePluginScores{
 				{Name: "node2", TotalScore: 2},
-			},
-			topNodesCnt:   100,
-			possibleNodes: sets.New("node2"),
-			possibleNodeLists: [][]fwk.NodePluginScores{
-				{
-					{Name: "node2", TotalScore: 2},
-					{Name: "node1", TotalScore: 1},
-				},
+				{Name: "node1", TotalScore: 1},
 			},
 		},
 		{
 			name: "equal scores",
 			list: []fwk.NodePluginScores{
-				{Name: "node2.1", TotalScore: 2},
-				{Name: "node2.2", TotalScore: 2},
-				{Name: "node2.3", TotalScore: 2},
+				{Name: "node2.2", TotalScore: 2, Randomizer: 2},
+				{Name: "node2.1", TotalScore: 2, Randomizer: 1},
+				{Name: "node2.3", TotalScore: 2, Randomizer: 3},
 			},
-			topNodesCnt:   2,
-			possibleNodes: sets.New("node2.1", "node2.2", "node2.3"),
-			possibleNodeLists: [][]fwk.NodePluginScores{
-				{
-					{Name: "node2.1", TotalScore: 2},
-					{Name: "node2.2", TotalScore: 2},
-				},
-				{
-					{Name: "node2.1", TotalScore: 2},
-					{Name: "node2.3", TotalScore: 2},
-				},
-				{
-					{Name: "node2.2", TotalScore: 2},
-					{Name: "node2.1", TotalScore: 2},
-				},
-				{
-					{Name: "node2.2", TotalScore: 2},
-					{Name: "node2.3", TotalScore: 2},
-				},
-				{
-					{Name: "node2.3", TotalScore: 2},
-					{Name: "node2.1", TotalScore: 2},
-				},
-				{
-					{Name: "node2.3", TotalScore: 2},
-					{Name: "node2.2", TotalScore: 2},
-				},
+			expectedNodeList: []fwk.NodePluginScores{
+				{Name: "node2.3", TotalScore: 2, Randomizer: 3},
+				{Name: "node2.2", TotalScore: 2, Randomizer: 2},
+				{Name: "node2.1", TotalScore: 2, Randomizer: 1},
 			},
 		},
 		{
 			name: "out of order scores",
 			list: []fwk.NodePluginScores{
-				{Name: "node3.1", TotalScore: 3},
+				{Name: "node3.1", TotalScore: 3, Randomizer: 1},
 				{Name: "node2.1", TotalScore: 2},
 				{Name: "node1.1", TotalScore: 1},
-				{Name: "node3.2", TotalScore: 3},
+				{Name: "node3.2", TotalScore: 3, Randomizer: 2},
 			},
-			topNodesCnt:   3,
-			possibleNodes: sets.New("node3.1", "node3.2"),
-			possibleNodeLists: [][]fwk.NodePluginScores{
-				{
-					{Name: "node3.1", TotalScore: 3},
-					{Name: "node3.2", TotalScore: 3},
-					{Name: "node2.1", TotalScore: 2},
-				},
-				{
-					{Name: "node3.2", TotalScore: 3},
-					{Name: "node3.1", TotalScore: 3},
-					{Name: "node2.1", TotalScore: 2},
-				},
+			expectedNodeList: []fwk.NodePluginScores{
+				{Name: "node3.2", TotalScore: 3, Randomizer: 2},
+				{Name: "node3.1", TotalScore: 3, Randomizer: 1},
+				{Name: "node2.1", TotalScore: 2},
+				{Name: "node1.1", TotalScore: 1},
 			},
-		},
-		{
-			name:          "empty priority list",
-			list:          []fwk.NodePluginScores{},
-			possibleNodes: sets.Set[string]{},
-			wantError:     errEmptyPriorityList,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			// increase the randomness
-			for i := 0; i < 10; i++ {
-				got, scoreList, err := selectHost(test.list, test.topNodesCnt)
-				if err != test.wantError {
-					t.Fatalf("unexpected error is returned from selectHost: got: %v want: %v", err, test.wantError)
-				}
-				if test.possibleNodes.Len() == 0 {
-					if got != "" {
-						t.Fatalf("expected nothing returned as selected Node, but actually %s is returned from selectHost", got)
-					}
-					return
-				}
-				if !test.possibleNodes.Has(got) {
-					t.Errorf("got %s is not in the possible map %v", got, test.possibleNodes)
-				}
-				if got != scoreList[0].Name {
-					t.Errorf("The head of list should be the selected Node's score: got: %v, expected: %v", scoreList[0], got)
-				}
-				for _, list := range test.possibleNodeLists {
-					if cmp.Equal(list, scoreList) {
-						return
-					}
-				}
+			var err error
+			var scoreList = []fwk.NodePluginScores{}
+			h := newSortedNodeScores(test.list)
+			for range len(test.list) {
+				gotNode := h.PopScore()
+				scoreList = append(scoreList, gotNode)
+			}
+			if !errors.Is(err, test.wantError) {
+				t.Fatalf("unexpected error is returned from selectHost: got: %v want: %v", err, test.wantError)
+			}
+			if !cmp.Equal(test.expectedNodeList, scoreList) {
 				t.Errorf("Unexpected scoreList: %v", scoreList)
 			}
 		})
@@ -3452,7 +3496,7 @@ func TestSchedulerSchedulePod(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			cache := internalcache.New(ctx, time.Duration(0), nil)
+			cache := internalcache.New(ctx, nil)
 			for _, pod := range test.pods {
 				cache.AddPod(logger, pod)
 			}
@@ -3551,7 +3595,7 @@ func TestFindFitAllError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, diagnosis, err := scheduler.findNodesThatFitPod(ctx, schedFramework, framework.NewCycleState(), &v1.Pod{})
+	_, diagnosis, _, _, err := scheduler.findNodesThatFitPod(ctx, schedFramework, framework.NewCycleState(), &v1.Pod{})
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -3597,7 +3641,7 @@ func TestFindFitSomeError(t *testing.T) {
 	}
 
 	pod := st.MakePod().Name("1").UID("1").Obj()
-	_, diagnosis, err := scheduler.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), pod)
+	_, diagnosis, _, _, err := scheduler.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), pod)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -3692,7 +3736,7 @@ func TestFindFitPredicateCallCounts(t *testing.T) {
 			}
 			schedFramework.AddNominatedPod(logger, podinfo, &fwk.NominatingInfo{NominatingMode: fwk.ModeOverride, NominatedNodeName: "1"})
 
-			_, _, err = scheduler.findNodesThatFitPod(ctx, schedFramework, framework.NewCycleState(), test.pod)
+			_, _, _, _, err = scheduler.findNodesThatFitPod(ctx, schedFramework, framework.NewCycleState(), test.pod)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -3831,7 +3875,7 @@ func TestZeroRequest(t *testing.T) {
 			sched.applyDefaultHandlers()
 
 			state := framework.NewCycleState()
-			_, _, err = sched.findNodesThatFitPod(ctx, fwk, state, test.pod)
+			_, _, _, _, err = sched.findNodesThatFitPod(ctx, fwk, state, test.pod)
 			if err != nil {
 				t.Fatalf("error filtering nodes: %+v", err)
 			}
@@ -4212,7 +4256,7 @@ func Test_prioritizeNodes(t *testing.T) {
 			_, ctx := ktesting.NewTestContext(t)
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
-			cache := internalcache.New(ctx, time.Duration(0), nil)
+			cache := internalcache.New(ctx, nil)
 			for _, node := range test.nodes {
 				cache.AddNode(klog.FromContext(ctx), node)
 			}
@@ -4244,6 +4288,9 @@ func Test_prioritizeNodes(t *testing.T) {
 			nodesscores, err := prioritizeNodes(ctx, extenders, schedFramework, state, test.pod, nodeInfos)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
+			}
+			for i := range nodesscores {
+				nodesscores[i].Randomizer = 0
 			}
 			for i := range nodesscores {
 				sort.Slice(nodesscores[i].Scores, func(j, k int) bool {
@@ -4362,7 +4409,7 @@ func TestFairEvaluationForNodes(t *testing.T) {
 
 	// Iterating over all nodes more than twice
 	for i := 0; i < 2*(numAllNodes/nodesToFind+1); i++ {
-		nodesThatFit, _, err := sched.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), &v1.Pod{})
+		nodesThatFit, _, _, _, err := sched.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), &v1.Pod{})
 		if err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -4410,7 +4457,7 @@ func TestPreferNominatedNodeFilterCallCounts(t *testing.T) {
 			nodes := makeNodeList([]string{"node1", "node2", "node3"})
 			client := clientsetfake.NewClientset(test.pod)
 			informerFactory := informers.NewSharedInformerFactory(client, 0)
-			cache := internalcache.New(ctx, time.Duration(0), nil)
+			cache := internalcache.New(ctx, nil)
 			for _, n := range nodes {
 				cache.AddNode(logger, n)
 			}
@@ -4446,7 +4493,7 @@ func TestPreferNominatedNodeFilterCallCounts(t *testing.T) {
 			}
 			sched.applyDefaultHandlers()
 
-			_, _, err = sched.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), test.pod)
+			_, _, _, _, err = sched.findNodesThatFitPod(ctx, fwk, framework.NewCycleState(), test.pod)
 			if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -4492,7 +4539,7 @@ func makeNodeList(nodeNames []string) []*v1.Node {
 // makeScheduler makes a simple Scheduler for testing.
 func makeScheduler(ctx context.Context, nodes []*v1.Node) *Scheduler {
 	logger := klog.FromContext(ctx)
-	cache := internalcache.New(ctx, time.Duration(0), nil)
+	cache := internalcache.New(ctx, nil)
 	for _, n := range nodes {
 		cache.AddNode(logger, n)
 	}
@@ -4613,7 +4660,7 @@ func setupTestScheduler(ctx context.Context, t *testing.T, client clientset.Inte
 		nodeInfoSnapshot:         snapshot,
 		percentageOfNodesToScore: schedulerapi.DefaultPercentageOfNodesToScore,
 		NextPod: func(logger klog.Logger) (*framework.QueuedPodInfo, error) {
-			return &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(t, clientcache.Pop(queuedPodStore).(*v1.Pod))}, nil
+			return &framework.QueuedPodInfo{PodInfo: mustNewPodInfo(t, pop(queuedPodStore).(*v1.Pod))}, nil
 		},
 		SchedulingQueue: schedulingQueue,
 		APIDispatcher:   apiDispatcher,
@@ -4655,7 +4702,7 @@ func setupTestSchedulerWithVolumeBinding(ctx context.Context, t *testing.T, clie
 		t.Cleanup(apiDispatcher.Close)
 	}
 
-	scache := internalcache.New(ctx, 10*time.Minute, apiDispatcher)
+	scache := internalcache.New(ctx, apiDispatcher)
 	scache.AddNode(logger, &testNode)
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
 	pvcInformer := informerFactory.Core().V1().PersistentVolumeClaims()
@@ -4695,4 +4742,14 @@ func mustNewPodInfo(t *testing.T, pod *v1.Pod) *framework.PodInfo {
 		t.Fatal(err)
 	}
 	return podInfo
+}
+
+func pop(queue clientcache.Queue) interface{} {
+	obj, err := queue.Pop(func(obj interface{}, isInInitialList bool) error {
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+	return obj
 }

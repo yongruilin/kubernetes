@@ -49,6 +49,13 @@ const (
 	// used in some failure modes (e.g., plugin not found, client internal error) so that someone
 	// can more easily monitor all unsuccessful invocations.
 	failureExitCode = 1
+
+	// pluginAllowed represents an exec plugin invocation that was allowed by
+	// the plugin policy and/or the allowlist
+	pluginAllowed = "allowed"
+	// pluginAllowed represents an exec plugin invocation that was denied by
+	// the plugin policy and/or the allowlist
+	pluginDenied = "denied"
 )
 
 type certificateExpirationTracker struct {
@@ -105,7 +112,20 @@ func incrementCallsMetric(err error) {
 		metrics.ExecPluginCalls.Increment(failureExitCode, pluginNotFoundError)
 
 	default: // We don't know about this error type.
-		klog.V(2).InfoS("unexpected exec plugin return error type", "type", reflect.TypeOf(err).String(), "err", err)
+		// TODO (?): this code gets called through
+		// https://github.com/kubernetes/kubernetes/blob/8a5cf7b66f4bf8c76c4a78e249ee7c21f7d7403e/staging/src/k8s.io/client-go/transport/config.go#L152-L154
+		// which would have to be changed to accept a context.
+		// Probably not worth it?
+		klog.TODO().V(2).Info("unexpected exec plugin return error type", "type", reflect.TypeOf(err).String(), "err", err)
 		metrics.ExecPluginCalls.Increment(failureExitCode, clientInternalError)
 	}
+}
+
+func incrementPolicyMetric(err error) {
+	if err != nil {
+		metrics.ExecPluginPolicyCalls.Increment(pluginDenied)
+		return
+	}
+
+	metrics.ExecPluginPolicyCalls.Increment(pluginAllowed)
 }

@@ -32,6 +32,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
+
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -52,6 +54,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/kubernetes/fake"
@@ -60,6 +63,8 @@ import (
 	"k8s.io/component-base/featuregate"
 	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/component-base/metrics/testutil"
+	ndf "k8s.io/component-helpers/nodedeclaredfeatures"
+	ndftesting "k8s.io/component-helpers/nodedeclaredfeatures/testing"
 	internalapi "k8s.io/cri-api/pkg/apis"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	remote "k8s.io/cri-client/pkg"
@@ -334,6 +339,7 @@ func newTestKubeletWithImageList(
 		kubelet.GetActivePods,
 		kubelet.podManager.GetPodByUID,
 		config.NewSourcesReady(func(_ sets.Set[string]) bool { return enableResizing }),
+		kubelet.recorder,
 	)
 	kubelet.allocationManager.SetContainerRuntime(fakeRuntime)
 	volumeStatsAggPeriod := time.Second * 10
@@ -405,14 +411,14 @@ func newTestKubeletWithImageList(
 		ShutdownGracePeriodCriticalPods: 0,
 	})
 	kubelet.shutdownManager = shutdownManager
-	kubelet.usernsManager, err = userns.MakeUserNsManager(logger, kubelet)
+	kubelet.usernsManager, err = userns.MakeUserNsManager(logger, kubelet, nil)
 	if err != nil {
 		t.Fatalf("Failed to create UserNsManager: %v", err)
 	}
 	handlers = append(handlers, shutdownManager)
 
 	// Add this as cleanup predicate pod admitter
-	handlers = append(handlers, lifecycle.NewPredicateAdmitHandler(kubelet.getNodeAnyWay, lifecycle.NewAdmissionFailureHandlerStub(), kubelet.containerManager.UpdatePluginResources))
+	handlers = append(handlers, lifecycle.NewPredicateAdmitHandler(kubelet.GetCachedNode, lifecycle.NewAdmissionFailureHandlerStub(), kubelet.containerManager.UpdatePluginResources))
 
 	if !excludeAdmitHandlers {
 		kubelet.allocationManager.AddPodAdmitHandlers(handlers)
@@ -1230,7 +1236,7 @@ func TestHandlePluginResources(t *testing.T) {
 	}
 
 	// add updatePluginResourcesFunc to admission handler, to test it's behavior.
-	kl.allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{lifecycle.NewPredicateAdmitHandler(kl.getNodeAnyWay, lifecycle.NewAdmissionFailureHandlerStub(), updatePluginResourcesFunc)})
+	kl.allocationManager.AddPodAdmitHandlers(lifecycle.PodAdmitHandlers{lifecycle.NewPredicateAdmitHandler(kl.GetCachedNode, lifecycle.NewAdmissionFailureHandlerStub(), updatePluginResourcesFunc)})
 
 	recorder := record.NewFakeRecorder(20)
 	nodeRef := &v1.ObjectReference{
@@ -1821,6 +1827,7 @@ func TestCheckpointContainer(t *testing.T) {
 }
 
 func TestSyncPodsSetStatusToFailedForPodsThatRunTooLong(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
 	defer testKubelet.Cleanup()
 	fakeRuntime := testKubelet.fakeRuntime
@@ -1861,7 +1868,7 @@ func TestSyncPodsSetStatusToFailedForPodsThatRunTooLong(t *testing.T) {
 	}
 
 	// Let the pod worker sets the status to fail after this sync.
-	kubelet.HandlePodUpdates(pods)
+	kubelet.HandlePodUpdates(logger, pods)
 	status, found := kubelet.statusManager.GetPodStatus(pods[0].UID)
 	assert.True(t, found, "expected to found status for pod %q", pods[0].UID)
 	assert.Equal(t, v1.PodFailed, status.Phase)
@@ -1870,6 +1877,7 @@ func TestSyncPodsSetStatusToFailedForPodsThatRunTooLong(t *testing.T) {
 }
 
 func TestSyncPodsDoesNotSetPodsThatDidNotRunTooLongToFailed(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
 	defer testKubelet.Cleanup()
 	fakeRuntime := testKubelet.fakeRuntime
@@ -1911,7 +1919,7 @@ func TestSyncPodsDoesNotSetPodsThatDidNotRunTooLongToFailed(t *testing.T) {
 	}
 
 	kubelet.podManager.SetPods(pods)
-	kubelet.HandlePodUpdates(pods)
+	kubelet.HandlePodUpdates(logger, pods)
 	status, found := kubelet.statusManager.GetPodStatus(pods[0].UID)
 	assert.True(t, found, "expected to found status for pod %q", pods[0].UID)
 	assert.NotEqual(t, v1.PodFailed, status.Phase)
@@ -2052,6 +2060,7 @@ func TestGetPodsToSync(t *testing.T) {
 }
 
 func TestGenerateAPIPodStatusWithSortedContainers(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
@@ -2087,7 +2096,7 @@ func TestGenerateAPIPodStatusWithSortedContainers(t *testing.T) {
 		ContainerStatuses: cStatuses,
 	}
 	for i := 0; i < 5; i++ {
-		apiStatus := kubelet.generateAPIPodStatus(pod, status, false)
+		apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, status, false)
 		for i, c := range apiStatus.ContainerStatuses {
 			if expectedOrder[i] != c.Name {
 				t.Fatalf("Container status not sorted, expected %v at index %d, but found %v", expectedOrder[i], i, c.Name)
@@ -2105,6 +2114,7 @@ func verifyContainerStatuses(t *testing.T, statuses []v1.ContainerStatus, expect
 
 // Test generateAPIPodStatus with different reason cache and old api pod status.
 func TestGenerateAPIPodStatusWithReasonCache(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	// The following waiting reason and message  are generated in convertStatusToAPIStatus()
 	testTimestamp := time.Unix(123456789, 987654321)
 	testErrorReason := fmt.Errorf("test-error")
@@ -2301,7 +2311,7 @@ func TestGenerateAPIPodStatusWithReasonCache(t *testing.T) {
 		pod.Spec.Containers = test.containers
 		pod.Status.ContainerStatuses = test.oldStatuses
 		podStatus.ContainerStatuses = test.statuses
-		apiStatus := kubelet.generateAPIPodStatus(pod, podStatus, false)
+		apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, podStatus, false)
 		verifyContainerStatuses(t, apiStatus.ContainerStatuses, test.expectedState, test.expectedLastTerminationState, fmt.Sprintf("case %d", i))
 	}
 
@@ -2314,7 +2324,7 @@ func TestGenerateAPIPodStatusWithReasonCache(t *testing.T) {
 		pod.Spec.InitContainers = test.containers
 		pod.Status.InitContainerStatuses = test.oldStatuses
 		podStatus.ContainerStatuses = test.statuses
-		apiStatus := kubelet.generateAPIPodStatus(pod, podStatus, false)
+		apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, podStatus, false)
 		expectedState := test.expectedState
 		if test.expectedInitState != nil {
 			expectedState = test.expectedInitState
@@ -2325,6 +2335,7 @@ func TestGenerateAPIPodStatusWithReasonCache(t *testing.T) {
 
 // Test generateAPIPodStatus with different restart policies.
 func TestGenerateAPIPodStatusWithDifferentRestartPolicies(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	testErrorReason := fmt.Errorf("test-error")
 	emptyContainerID := (&kubecontainer.ContainerID{}).String()
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
@@ -2453,14 +2464,14 @@ func TestGenerateAPIPodStatusWithDifferentRestartPolicies(t *testing.T) {
 		pod.Spec.RestartPolicy = test.restartPolicy
 		// Test normal containers
 		pod.Spec.Containers = containers
-		apiStatus := kubelet.generateAPIPodStatus(pod, podStatus, false)
+		apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, podStatus, false)
 		expectedState, expectedLastTerminationState := test.expectedState, test.expectedLastTerminationState
 		verifyContainerStatuses(t, apiStatus.ContainerStatuses, expectedState, expectedLastTerminationState, fmt.Sprintf("case %d", c))
 		pod.Spec.Containers = nil
 
 		// Test init containers
 		pod.Spec.InitContainers = containers
-		apiStatus = kubelet.generateAPIPodStatus(pod, podStatus, false)
+		apiStatus = kubelet.generateAPIPodStatus(tCtx, pod, podStatus, false)
 		if test.expectedInitState != nil {
 			expectedState = test.expectedInitState
 		}
@@ -2474,6 +2485,7 @@ func TestGenerateAPIPodStatusWithDifferentRestartPolicies(t *testing.T) {
 
 // Test generateAPIPodStatus with different container-level restart policies.
 func TestGenerateAPIPodStatusWithContainerRestartPolicies(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	var (
 		containerRestartPolicyAlways    = v1.ContainerRestartPolicyAlways
 		containerRestartPolicyOnFailure = v1.ContainerRestartPolicyOnFailure
@@ -2669,7 +2681,7 @@ func TestGenerateAPIPodStatusWithContainerRestartPolicies(t *testing.T) {
 		pod.Spec.RestartPolicy = v1.RestartPolicyAlways
 		// Test normal containers
 		pod.Spec.Containers = test.containers
-		apiStatus := kubelet.generateAPIPodStatus(pod, podStatus, false)
+		apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, podStatus, false)
 		expectedState, expectedLastTerminationState := test.expectedState, test.expectedLastTerminationState
 		verifyContainerStatuses(t, apiStatus.ContainerStatuses, expectedState, expectedLastTerminationState, test.desc)
 		pod.Spec.Containers = nil
@@ -3005,6 +3017,7 @@ func (a *testPodSyncHandler) ShouldEvict(pod *v1.Pod) lifecycle.ShouldEvictRespo
 
 // TestGenerateAPIPodStatusInvokesPodSyncHandlers invokes the handlers and reports the proper status
 func TestGenerateAPIPodStatusInvokesPodSyncHandlers(t *testing.T) {
+	tCtx := ktesting.Init(t)
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
@@ -3016,7 +3029,7 @@ func TestGenerateAPIPodStatusInvokesPodSyncHandlers(t *testing.T) {
 		Name:      pod.Name,
 		Namespace: pod.Namespace,
 	}
-	apiStatus := kubelet.generateAPIPodStatus(pod, status, false)
+	apiStatus := kubelet.generateAPIPodStatus(tCtx, pod, status, false)
 	require.Equal(t, v1.PodFailed, apiStatus.Phase)
 	require.Equal(t, "Evicted", apiStatus.Reason)
 	require.Equal(t, "because", apiStatus.Message)
@@ -3263,7 +3276,11 @@ func TestNewMainKubeletStandAlone(t *testing.T) {
 		ConfigMapAndSecretChangeDetectionStrategy: kubeletconfiginternal.WatchChangeDetectionStrategy,
 		ContainerLogMaxSize:                       "10Mi",
 		ContainerLogMaxFiles:                      5,
+		ImagePullCredentialsVerificationPolicy:    "NeverVerifyPreloadedImages",
 		MemoryThrottlingFactor:                    ptr.To[float64](0),
+		CrashLoopBackOff: kubeletconfiginternal.CrashLoopBackOffConfig{
+			MaxContainerRestartPeriod: &metav1.Duration{Duration: 5 * time.Minute},
+		},
 	}
 	var prober volume.DynamicPluginProber
 	tp := noopoteltrace.NewTracerProvider()
@@ -3386,6 +3403,8 @@ func TestSyncPodSpans(t *testing.T) {
 		ContainerLogMaxSize:                       "10Mi",
 		ContainerLogMaxFiles:                      5,
 		MemoryThrottlingFactor:                    ptr.To[float64](0),
+		MaxPods:                                   110,
+		MaxParallelImagePulls:                     ptr.To[int32](5),
 	}
 
 	exp := tracetest.NewInMemoryExporter()
@@ -3729,60 +3748,46 @@ func TestCrashLoopBackOffConfiguration(t *testing.T) {
 	testCases := []struct {
 		name            string
 		featureGates    []featuregate.Feature
-		nodeDecay       metav1.Duration
+		configuredMax   metav1.Duration
 		expectedInitial time.Duration
 		expectedMax     time.Duration
 	}{
 		{
-			name:            "Prior behavior",
-			expectedMax:     time.Duration(300 * time.Second),
-			expectedInitial: time.Duration(10 * time.Second),
-		},
-		{
-			name:            "New default only",
-			featureGates:    []featuregate.Feature{features.ReduceDefaultCrashLoopBackOffDecay},
-			expectedMax:     time.Duration(60 * time.Second),
-			expectedInitial: time.Duration(1 * time.Second),
-		},
-		{
 			name:            "Faster per node config; only node config configured",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax},
-			nodeDecay:       metav1.Duration{Duration: 2 * time.Second},
+			configuredMax:   metav1.Duration{Duration: 2 * time.Second},
 			expectedMax:     time.Duration(2 * time.Second),
 			expectedInitial: time.Duration(2 * time.Second),
 		},
 		{
 			name:            "Faster per node config; new default and node config configured",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax, features.ReduceDefaultCrashLoopBackOffDecay},
-			nodeDecay:       metav1.Duration{Duration: 2 * time.Second},
+			featureGates:    []featuregate.Feature{features.ReduceDefaultCrashLoopBackOffDecay},
+			configuredMax:   metav1.Duration{Duration: 2 * time.Second},
 			expectedMax:     time.Duration(2 * time.Second),
 			expectedInitial: time.Duration(1 * time.Second),
 		},
 		{
 			name:            "Slower per node config; new default and node config configured, set A",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax, features.ReduceDefaultCrashLoopBackOffDecay},
-			nodeDecay:       metav1.Duration{Duration: 10 * time.Second},
+			featureGates:    []featuregate.Feature{features.ReduceDefaultCrashLoopBackOffDecay},
+			configuredMax:   metav1.Duration{Duration: 10 * time.Second},
 			expectedMax:     time.Duration(10 * time.Second),
 			expectedInitial: time.Duration(1 * time.Second),
 		},
 		{
 			name:            "Slower per node config; new default and node config configured, set B",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax, features.ReduceDefaultCrashLoopBackOffDecay},
-			nodeDecay:       metav1.Duration{Duration: 300 * time.Second},
+			featureGates:    []featuregate.Feature{features.ReduceDefaultCrashLoopBackOffDecay},
+			configuredMax:   metav1.Duration{Duration: 300 * time.Second},
 			expectedMax:     time.Duration(300 * time.Second),
 			expectedInitial: time.Duration(1 * time.Second),
 		},
 		{
 			name:            "Slower per node config; only node config configured, set A",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax},
-			nodeDecay:       metav1.Duration{Duration: 11 * time.Second},
+			configuredMax:   metav1.Duration{Duration: 11 * time.Second},
 			expectedMax:     time.Duration(11 * time.Second),
 			expectedInitial: time.Duration(10 * time.Second),
 		},
 		{
 			name:            "Slower per node config; only node config configured, set B",
-			featureGates:    []featuregate.Feature{features.KubeletCrashLoopBackOffMax},
-			nodeDecay:       metav1.Duration{Duration: 300 * time.Second},
+			configuredMax:   metav1.Duration{Duration: 300 * time.Second},
 			expectedMax:     time.Duration(300 * time.Second),
 			expectedInitial: time.Duration(10 * time.Second),
 		},
@@ -3795,8 +3800,8 @@ func TestCrashLoopBackOffConfiguration(t *testing.T) {
 			for _, f := range tc.featureGates {
 				featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, f, true)
 			}
-			if tc.nodeDecay.Duration > 0 {
-				kubeCfg.CrashLoopBackOff.MaxContainerRestartPeriod = &tc.nodeDecay
+			if tc.configuredMax.Duration > 0 {
+				kubeCfg.CrashLoopBackOff.MaxContainerRestartPeriod = &tc.configuredMax
 			}
 
 			resultMax, resultInitial := newCrashLoopBackOff(kubeCfg)
@@ -3811,18 +3816,24 @@ func TestSyncPodWithErrorsDuringInPlacePodResize(t *testing.T) {
 	testKubelet := newTestKubelet(t, false /* controllerAttachDetachEnabled */)
 	defer testKubelet.Cleanup()
 	kubelet := testKubelet.kubelet
+	kubelet.recorder = record.NewFakeRecorder(20)
 
 	pod := podWithUIDNameNsSpec("12345678", "foo", "new", v1.PodSpec{
 		Containers: []v1.Container{
 			{Name: "bar"},
 		},
 	})
+	pod.Generation = 2
+	kubelet.podManager.SetPods([]*v1.Pod{pod})
+	kubelet.statusManager.SetPodResizeInProgressCondition(pod.UID, "", "", 1)
 
 	testCases := []struct {
 		name                     string
 		syncResults              *kubecontainer.PodSyncResult
+		podResizeInProgress      bool
 		expectedErr              string
 		expectedResizeConditions []*v1.PodCondition
+		expectedEvent            string
 	}{
 		{
 			name: "pod resize error returned from the runtime",
@@ -3834,13 +3845,16 @@ func TestSyncPodWithErrorsDuringInPlacePodResize(t *testing.T) {
 					Message: "could not resize pod",
 				}},
 			},
-			expectedErr: "failed to \"ResizePodInPlace\" for \"12345678\" with ResizePodInPlaceError: \"could not resize pod\"",
+			podResizeInProgress: true,
+			expectedErr:         "failed to \"ResizePodInPlace\" for \"12345678\" with ResizePodInPlaceError: \"could not resize pod\"",
 			expectedResizeConditions: []*v1.PodCondition{{
-				Type:    v1.PodResizeInProgress,
-				Status:  v1.ConditionTrue,
-				Reason:  v1.PodReasonError,
-				Message: "could not resize pod",
+				Type:               v1.PodResizeInProgress,
+				Status:             v1.ConditionTrue,
+				Reason:             v1.PodReasonError,
+				Message:            "could not resize pod",
+				ObservedGeneration: 1,
 			}},
+			expectedEvent: "Warning ResizeError Pod resize error: {\"containers\":[{\"name\":\"bar\",\"resources\":{}}],\"generation\":1,\"error\":\"could not resize pod\"}",
 		},
 		{
 			name: "pod resize error cleared upon successful run",
@@ -3851,6 +3865,7 @@ func TestSyncPodWithErrorsDuringInPlacePodResize(t *testing.T) {
 				}},
 			},
 			expectedResizeConditions: nil,
+			expectedEvent:            "Normal ResizeCompleted Pod resize completed: {\"containers\":[{\"name\":\"bar\",\"resources\":{}}],\"generation\":1}",
 		},
 		{
 			name: "sync results have a non-resize error",
@@ -3889,7 +3904,7 @@ func TestSyncPodWithErrorsDuringInPlacePodResize(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			testKubelet.fakeRuntime.SyncResults = tc.syncResults
-			kubelet.podManager.SetPods([]*v1.Pod{pod})
+			testKubelet.fakeRuntime.PodResizeInProgress = tc.podResizeInProgress
 			isTerminal, err := kubelet.SyncPod(context.Background(), kubetypes.SyncPodUpdate, pod, nil, &kubecontainer.PodStatus{})
 			require.False(t, isTerminal)
 			if tc.expectedErr == "" {
@@ -3905,11 +3920,26 @@ func TestSyncPodWithErrorsDuringInPlacePodResize(t *testing.T) {
 				c.LastTransitionTime = metav1.Time{}
 			}
 			require.Equal(t, tc.expectedResizeConditions, gotResizeConditions)
+
+			fakeRecorder := kubelet.recorder.(*record.FakeRecorder)
+			found := false
+			for len(fakeRecorder.Events) > 0 {
+				event := <-fakeRecorder.Events
+				if event == tc.expectedEvent {
+					found = true
+				} else if strings.Contains(event, "Resize") {
+					t.Errorf("Received unexpected resize event: %q", event)
+				}
+			}
+			if tc.expectedEvent != "" {
+				require.True(t, found, "Expected event %q not found", tc.expectedEvent)
+			}
 		})
 	}
 }
 
 func TestHandlePodUpdates_RecordContainerRequestedResizes(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
 	metrics.Register()
 	metrics.ContainerRequestedResizes.Reset()
 
@@ -4491,7 +4521,7 @@ func TestHandlePodUpdates_RecordContainerRequestedResizes(t *testing.T) {
 
 			kubelet.podManager.AddPod(initialPod)
 			require.NoError(t, kubelet.allocationManager.SetAllocatedResources(initialPod))
-			kubelet.HandlePodUpdates([]*v1.Pod{updatedPod})
+			kubelet.HandlePodUpdates(logger, []*v1.Pod{updatedPod})
 
 			tc.updateExpectedFunc(&expectedMetrics)
 
@@ -4683,6 +4713,171 @@ func TestHandlePodReconcile_RetryPendingResizes(t *testing.T) {
 			kubelet.allocationManager.RemovePod(pendingResizeDesired.UID)
 			kubelet.podManager.RemovePod((pendingResizeDesired))
 			kubelet.podManager.RemovePod(tc.oldPod)
+		})
+	}
+}
+
+func TestSyncPodNodeDeclaredFeaturesUpdate(t *testing.T) {
+	logger, _ := ktesting.NewTestContext(t)
+	cpu1000m := resource.MustParse("1")
+	mem1000M := resource.MustParse("1Gi")
+	cpu2000m := resource.MustParse("2")
+	oldPod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			UID:       "1111",
+			Name:      "pod1",
+			Namespace: "ns1",
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{
+					Name:  "c1",
+					Image: "i1",
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
+					},
+				},
+			},
+		},
+		Status: v1.PodStatus{
+			Phase: v1.PodRunning,
+			ContainerStatuses: []v1.ContainerStatus{
+				{
+					Name:               "c1",
+					AllocatedResources: v1.ResourceList{v1.ResourceCPU: cpu1000m, v1.ResourceMemory: mem1000M},
+					Resources:          &v1.ResourceRequirements{},
+				},
+			},
+		},
+	}
+	newPod := oldPod.DeepCopy()
+	newPod.Spec.Containers[0].Resources.Requests[v1.ResourceCPU] = cpu2000m
+	createMockFeature := func(t *testing.T, name string, inferForUpdate bool, maxVersionStr string) *ndftesting.MockFeature {
+		m := ndftesting.NewMockFeature(t)
+		m.EXPECT().Name().Return(name).Maybe()
+		m.EXPECT().InferForUpdate(mock.Anything, mock.Anything).Return(inferForUpdate).Maybe()
+		if maxVersionStr != "" {
+			maxVersionStr := utilversion.MustParseSemantic(maxVersionStr)
+			m.EXPECT().MaxVersion().Return(maxVersionStr).Maybe()
+		} else {
+			m.EXPECT().MaxVersion().Return(nil).Maybe()
+		}
+		return m
+	}
+
+	testCases := []struct {
+		name               string
+		featureGateEnabled bool
+		nodeFeatures       []string
+		oldPod             *v1.Pod
+		newPod             *v1.Pod
+		registeredFeatures []ndf.Feature
+		expectEvent        bool
+		expectedEventMsg   string
+		componentVersion   string
+	}{
+		{
+			name:               "Feature gate disabled",
+			featureGateEnabled: false,
+			componentVersion:   "1.35.0",
+			oldPod:             oldPod,
+			newPod:             newPod,
+			registeredFeatures: []ndf.Feature{},
+			expectEvent:        false,
+		},
+		{
+			name:               "Feature gate enabled, no requirements from update",
+			featureGateEnabled: true,
+			componentVersion:   "1.35.0",
+			oldPod:             oldPod,
+			newPod:             newPod,
+			nodeFeatures:       []string{"FeatureA"},
+			registeredFeatures: []ndf.Feature{createMockFeature(t, "FeatureA", false, "")},
+			expectEvent:        false,
+		},
+		{
+			name:               "Feature gate enabled, requirements met",
+			featureGateEnabled: true,
+			componentVersion:   "1.35.0",
+			oldPod:             oldPod,
+			newPod:             newPod,
+			nodeFeatures:       []string{"FeatureA"},
+			registeredFeatures: []ndf.Feature{createMockFeature(t, "FeatureA", true, "")},
+			expectEvent:        false,
+		},
+		{
+			name:               "Feature gate enabled, requirements not met",
+			featureGateEnabled: true,
+			componentVersion:   "1.35.0",
+			oldPod:             oldPod,
+			newPod:             newPod,
+			nodeFeatures:       []string{"FeatureB"},
+			registeredFeatures: []ndf.Feature{createMockFeature(t, "FeatureA", true, "")},
+			expectEvent:        true,
+			expectedEventMsg:   "Pod requires node features that are not available: FeatureA",
+		},
+		{
+			name:               "feature generally available - not declared",
+			featureGateEnabled: true,
+			componentVersion:   "1.35.0",
+			oldPod:             oldPod,
+			newPod:             newPod,
+			nodeFeatures:       []string{""},
+			registeredFeatures: []ndf.Feature{createMockFeature(t, "FeatureA", true, "1.34.0")},
+			expectEvent:        false,
+		},
+		{
+			name:               "Feature gate enabled, old pod state missing, node declared feature check skipped",
+			featureGateEnabled: true,
+			componentVersion:   "1.35.0",
+			oldPod:             nil,
+			newPod:             newPod,
+			nodeFeatures:       []string{"FeatureB"},
+			registeredFeatures: []ndf.Feature{createMockFeature(t, "FeatureA", true, "")},
+			expectEvent:        false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.NodeDeclaredFeatures, tc.featureGateEnabled)
+
+			testKubelet := newTestKubelet(t, false)
+			defer testKubelet.Cleanup()
+			kubelet := testKubelet.kubelet
+
+			// Setup mocks
+			recorder := record.NewFakeRecorder(10)
+			kubelet.recorder = recorder
+
+			framework, err := ndf.New(tc.registeredFeatures)
+			require.NoError(t, err)
+			kubelet.nodeDeclaredFeaturesFramework = framework
+			kubelet.nodeDeclaredFeatures = tc.nodeFeatures
+			kubelet.nodeDeclaredFeaturesSet = ndf.NewFeatureSet(kubelet.nodeDeclaredFeatures...)
+			kubelet.version = utilversion.MustParse("1.35.0")
+
+			if tc.oldPod != nil {
+				kubelet.podManager.SetPods([]*v1.Pod{tc.oldPod})
+			}
+
+			kubelet.statusManager.SetPodStatus(klog.TODO(), tc.newPod, v1.PodStatus{Phase: v1.PodRunning})
+			kubelet.HandlePodUpdates(logger, []*v1.Pod{tc.newPod})
+			if tc.expectEvent {
+				select {
+				case event := <-recorder.Events:
+					assert.Contains(t, event, tc.expectedEventMsg)
+				default:
+					t.Errorf("Expected an event but did not receive one.")
+				}
+			} else {
+				select {
+				case event := <-recorder.Events:
+					t.Errorf("Expected no event, but received: %s", event)
+				default:
+					// No event received, which is correct.
+				}
+			}
 		})
 	}
 }

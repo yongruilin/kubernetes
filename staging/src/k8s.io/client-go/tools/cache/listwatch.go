@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/util/watchlist"
 )
 
 // Lister is any object that knows how to perform an initial list.
@@ -89,7 +90,7 @@ func ToWatcherWithContext(w Watcher) WatcherWithContext {
 	if w, ok := w.(WatcherWithContext); ok {
 		return w
 	}
-	return watcherWrapper{
+	return &watcherWrapper{
 		parent: w,
 	}
 }
@@ -98,7 +99,7 @@ type watcherWrapper struct {
 	parent Watcher
 }
 
-func (l watcherWrapper) WatchWithContext(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+func (l *watcherWrapper) WatchWithContext(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
 	return l.parent.Watch(options)
 }
 
@@ -120,7 +121,7 @@ func ToListerWatcherWithContext(lw ListerWatcher) ListerWatcherWithContext {
 	if lw, ok := lw.(ListerWatcherWithContext); ok {
 		return lw
 	}
-	return listerWatcherWrapper{
+	return &listerWatcherWrapper{
 		ListerWithContext:  ToListerWithContext(lw),
 		WatcherWithContext: ToWatcherWithContext(lw),
 	}
@@ -129,6 +130,35 @@ func ToListerWatcherWithContext(lw ListerWatcher) ListerWatcherWithContext {
 type listerWatcherWrapper struct {
 	ListerWithContext
 	WatcherWithContext
+}
+type listWatcherWithWatchListSemanticsWrapper struct {
+	*ListWatch
+
+	// unsupportedWatchListSemantics indicates whether a client explicitly does NOT support
+	// WatchList semantics.
+	//
+	// Over the years, unit tests in kube have been written in many different ways.
+	// After enabling the WatchListClient feature by default, existing tests started failing.
+	// To avoid breaking lots of existing client-go users after upgrade,
+	// we introduced this field as an opt-in.
+	//
+	// When true, the reflector disables WatchList even if the feature gate is enabled.
+	unsupportedWatchListSemantics bool
+}
+
+func (lw *listWatcherWithWatchListSemanticsWrapper) IsWatchListSemanticsUnSupported() bool {
+	return lw.unsupportedWatchListSemantics
+}
+
+// ToListWatcherWithWatchListSemantics returns a ListerWatcher
+// that knows whether the provided client explicitly
+// does NOT support the WatchList semantics. This allows Reflectors
+// to adapt their behavior based on client capabilities.
+func ToListWatcherWithWatchListSemantics(lw *ListWatch, client any) ListerWatcher {
+	return &listWatcherWithWatchListSemanticsWrapper{
+		lw,
+		watchlist.DoesClientNotSupportWatchListSemantics(client),
+	}
 }
 
 // ListFunc knows how to list resources

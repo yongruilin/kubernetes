@@ -34,7 +34,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/features"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/apiserver/pkg/validation"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/component-base/metrics/testutil"
 	"k8s.io/klog/v2"
@@ -125,7 +128,7 @@ func TestValidateDeclaratively(t *testing.T) {
 	scheme.AddKnownTypes(internalGV, &Pod{})
 	scheme.AddKnownTypes(v1GV, &v1.Pod{})
 
-	scheme.AddValidationFunc(&v1.Pod{}, func(ctx context.Context, op operation.Operation, object, oldObject interface{}) field.ErrorList {
+	scheme.AddValidationFunc(&v1.Pod{}, func(ctx context.Context, op operation.Operation, object, oldObject any) field.ErrorList {
 		results := field.ErrorList{}
 		if op.HasOption("option1") {
 			results = append(results, invalidIfOptionErr)
@@ -213,6 +216,7 @@ func TestGatherDeclarativeValidationMismatches(t *testing.T) {
 	errB := field.Invalid(minReadySecondsPath, -1, "covered error B").WithOrigin("minimum")
 	coveredErrB := field.Invalid(minReadySecondsPath, -1, "covered error B").WithOrigin("minimum")
 	errBWithDiffDetail := field.Invalid(minReadySecondsPath, -1, "covered error B - different detail").WithOrigin("minimum")
+	errBWithDiffPath := field.Invalid(field.NewPath("spec").Child("fakeminReadySeconds"), -1, "covered error B").WithOrigin("minimum")
 	coveredErrB.CoveredByDeclarative = true
 	errC := field.Invalid(replicasPath, nil, "covered error C").WithOrigin("minimum")
 	coveredErrC := field.Invalid(replicasPath, nil, "covered error C").WithOrigin("minimum")
@@ -227,6 +231,7 @@ func TestGatherDeclarativeValidationMismatches(t *testing.T) {
 		takeover                bool
 		expectMismatches        bool
 		expectDetailsContaining []string
+		normalizedRules         []field.NormalizationRule
 	}{
 		{
 			name:                    "Declarative and imperative return 0 errors - no mismatch",
@@ -358,11 +363,29 @@ func TestGatherDeclarativeValidationMismatches(t *testing.T) {
 			expectMismatches:        false,
 			expectDetailsContaining: []string{},
 		},
+		{
+			name: "Field normalization, errors don't match - mismatch",
+			imperativeErrors: field.ErrorList{
+				coveredErrB,
+			},
+			declarativeErrors: field.ErrorList{
+				errBWithDiffPath,
+			},
+			normalizedRules: []field.NormalizationRule{
+				{
+					Regexp:      regexp.MustCompile(`spec.fakeminReadySeconds`),
+					Replacement: "spec.minReadySeconds",
+				},
+			},
+			takeover:                false,
+			expectMismatches:        false,
+			expectDetailsContaining: []string{},
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			details := gatherDeclarativeValidationMismatches(tc.imperativeErrors, tc.declarativeErrors, tc.takeover)
+			details := gatherDeclarativeValidationMismatches(tc.imperativeErrors, tc.declarativeErrors, tc.takeover, tc.normalizedRules)
 			// Check if mismatches were found if expected
 			if tc.expectMismatches && len(details) == 0 {
 				t.Errorf("Expected mismatches but got none")
@@ -429,7 +452,7 @@ func TestCompareDeclarativeErrorsAndEmitMismatches(t *testing.T) {
 			defer klog.LogToStderr(true)
 			ctx := context.Background()
 
-			compareDeclarativeErrorsAndEmitMismatches(ctx, tc.imperativeErrs, tc.declarativeErrs, tc.takeover, "test_validationIdentifier")
+			compareDeclarativeErrorsAndEmitMismatches(ctx, tc.imperativeErrs, tc.declarativeErrs, tc.takeover, "test_validationIdentifier", nil)
 
 			klog.Flush()
 			logOutput := buf.String()
@@ -715,10 +738,14 @@ func equalErrorLists(a, b field.ErrorList) bool {
 }
 
 func TestMetricIdentifier(t *testing.T) {
+	scheme := runtime.NewScheme()
+	scheme.AddKnownTypes(schema.GroupVersion{Version: "v1"}, &v1.Pod{})
+
 	testCases := []struct {
 		name        string
 		opType      operation.Type
 		obj         runtime.Object
+		scheme      *runtime.Scheme
 		subresource string
 		expected    string
 		expectErr   bool
@@ -727,6 +754,7 @@ func TestMetricIdentifier(t *testing.T) {
 			name:        "with subresource",
 			opType:      operation.Create,
 			obj:         &v1.Pod{TypeMeta: metav1.TypeMeta{Kind: "Pod"}},
+			scheme:      scheme,
 			subresource: "status",
 			expected:    "pod_status_create",
 			expectErr:   false,
@@ -735,6 +763,7 @@ func TestMetricIdentifier(t *testing.T) {
 			name:      "without subresource",
 			opType:    operation.Update,
 			obj:       &v1.Pod{TypeMeta: metav1.TypeMeta{Kind: "Pod"}},
+			scheme:    scheme,
 			expected:  "pod_update",
 			expectErr: false,
 		},
@@ -742,6 +771,7 @@ func TestMetricIdentifier(t *testing.T) {
 			name:      "unknown operation",
 			opType:    3, // not a valid operation.Type
 			obj:       &v1.Pod{TypeMeta: metav1.TypeMeta{Kind: "Pod"}},
+			scheme:    scheme,
 			expected:  "pod_unknown_op",
 			expectErr: true,
 		},
@@ -750,6 +780,29 @@ func TestMetricIdentifier(t *testing.T) {
 			opType:    operation.Create,
 			obj:       nil,
 			expected:  "unknown_resource_create",
+			expectErr: true,
+		},
+		{
+			name:      "known type without kind",
+			opType:    operation.Update,
+			obj:       &v1.Pod{},
+			scheme:    scheme,
+			expected:  "pod_update",
+			expectErr: false,
+		},
+		{
+			name:      "unknown type with scheme",
+			opType:    operation.Create,
+			obj:       &runtime.Unknown{}, // Not registered in the scheme
+			scheme:    scheme,
+			expected:  "unknown_resource_create",
+			expectErr: true,
+		},
+		{
+			name:      "unknown type without scheme",
+			opType:    operation.Type(4),
+			obj:       &runtime.Unknown{}, // Not registered in the scheme
+			expected:  "unknown_resource_unknown_op",
 			expectErr: true,
 		},
 	}
@@ -763,12 +816,132 @@ func TestMetricIdentifier(t *testing.T) {
 				})
 			}
 
-			result, err := metricIdentifier(ctx, tc.obj, tc.opType)
+			result, err := metricIdentifier(ctx, tc.scheme, tc.obj, tc.opType)
 			if (err != nil) != tc.expectErr {
 				t.Errorf("expected error: %v, got: %v", tc.expectErr, err)
 			}
 			if result != tc.expected {
 				t.Errorf("expected: %s, got: %s", tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestValidateDeclarativelyWithMigrationChecks(t *testing.T) {
+	// Create errors for testing
+	errImperative := field.ErrorList{
+		field.Invalid(field.NewPath("spec", "restartPolicy"), "imp", "imperative error"),
+		field.Forbidden(field.NewPath("spec", "restartPolicy"), "imperative error covered by declarative").MarkCoveredByDeclarative(),
+	}
+	errMirroredDeclarative := field.Invalid(field.NewPath("spec", "restartPolicy"), "dec", "declarative error")
+	errDeclarativeNative := field.Invalid(field.NewPath("spec", "replicas"), "decOnly", "declarative native error").MarkDeclarativeNative()
+
+	testCases := []struct {
+		name                      string
+		dvFeatureEnabled          bool
+		takeoverEnabled           bool
+		containsDeclarativeNative bool
+		imperativeErrors          field.ErrorList
+		declarativeErrors         field.ErrorList
+		expectedErrors            field.ErrorList
+		shouldPanic               bool
+	}{
+		{
+			name:              "Feature Disabled, Not DeclarativeNative -> Skips declarative",
+			imperativeErrors:  errImperative,
+			declarativeErrors: field.ErrorList{errMirroredDeclarative},
+			expectedErrors:    errImperative,
+		},
+		{
+			name:                      "Feature Disabled, contains DeclarativeNative -> Returns DeclarativeNative errors, ignores regular declarative errors",
+			containsDeclarativeNative: true,
+			imperativeErrors:          errImperative,
+			declarativeErrors:         field.ErrorList{errMirroredDeclarative, errDeclarativeNative},
+			expectedErrors:            append(errImperative, errDeclarativeNative),
+		},
+		{
+			name:              "Feature Enabled, Not DeclarativeNative -> Returns imperative (no takeover)",
+			dvFeatureEnabled:  true,
+			imperativeErrors:  errImperative,
+			declarativeErrors: field.ErrorList{errMirroredDeclarative},
+			expectedErrors:    errImperative,
+		},
+		{
+			name:                      "Feature Enabled, contains DeclarativeNative -> Returns imperative + DeclarativeNative",
+			dvFeatureEnabled:          true,
+			containsDeclarativeNative: true,
+			imperativeErrors:          errImperative,
+			declarativeErrors:         field.ErrorList{errMirroredDeclarative, errDeclarativeNative},
+			expectedErrors:            append(errImperative, errDeclarativeNative),
+		},
+		{
+			name:                      "Feature Enabled, takeover enabled, contains DeclarativeNative -> Returns non mirrored imperative + declarative + DeclarativeNative",
+			dvFeatureEnabled:          true,
+			containsDeclarativeNative: true,
+			takeoverEnabled:           true,
+			imperativeErrors:          errImperative,
+			declarativeErrors:         field.ErrorList{errMirroredDeclarative, errDeclarativeNative},
+			expectedErrors:            field.ErrorList{errImperative[0], errMirroredDeclarative, errDeclarativeNative},
+		},
+		{
+			name:                      "Feature Disabled, contains DeclarativeNative, Panics -> Returns InternalError",
+			containsDeclarativeNative: true,
+			imperativeErrors:          errImperative,
+			shouldPanic:               true,
+			expectedErrors:            append(errImperative, field.InternalError(nil, fmt.Errorf("panic during declarative validation: test panic"))),
+		},
+		{
+			name:                      "Feature Enabled, takeover enabled, contains DeclarativeNative, InternalError -> Returns non mirrored imperative + InternalError",
+			dvFeatureEnabled:          true,
+			containsDeclarativeNative: true,
+			takeoverEnabled:           true,
+			imperativeErrors:          errImperative,
+			declarativeErrors:         field.ErrorList{field.InternalError(nil, fmt.Errorf("internal error"))},
+			expectedErrors:            field.ErrorList{errImperative[0], field.InternalError(nil, fmt.Errorf("internal error")), field.InternalError(nil, fmt.Errorf("internal error"))},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Set feature gate
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeclarativeValidation, tc.dvFeatureEnabled)
+			featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.DeclarativeValidationTakeover, tc.takeoverEnabled)
+
+			// Setup scheme for this run
+			localScheme := runtime.NewScheme()
+			localScheme.AddKnownTypes(schema.GroupVersion{Group: "", Version: "v1"}, &v1.Pod{})
+			localScheme.AddValidationFunc(&v1.Pod{}, func(ctx context.Context, op operation.Operation, object, oldObject interface{}) field.ErrorList {
+				if tc.shouldPanic {
+					panic("test panic")
+				}
+				return tc.declarativeErrors
+			})
+
+			// Setup context
+			ctx := genericapirequest.WithRequestInfo(context.Background(), &genericapirequest.RequestInfo{
+				APIGroup:   "",
+				APIVersion: "v1",
+				Resource:   "pods",
+			})
+
+			obj := &v1.Pod{
+				TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Pod"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-pod"},
+			}
+
+			// Copy imperative errors because they might be modified/appended to
+			inputErrs := make(field.ErrorList, len(tc.imperativeErrors))
+			copy(inputErrs, tc.imperativeErrors)
+
+			opts := []ValidationConfig{}
+			if tc.containsDeclarativeNative {
+				opts = append(opts, WithDeclarativeNative())
+			}
+
+			gotErrs := ValidateDeclarativelyWithMigrationChecks(ctx, localScheme, obj, nil, inputErrs, operation.Create, opts...)
+
+			if !equalErrorLists(gotErrs, tc.expectedErrors) {
+				t.Errorf("Expected errors: %v, got: %v", tc.expectedErrors, gotErrs)
 			}
 		})
 	}

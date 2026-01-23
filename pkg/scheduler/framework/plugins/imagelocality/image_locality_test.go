@@ -93,6 +93,24 @@ func TestImageLocalityPriority(t *testing.T) {
 		},
 	}
 
+	testImageVolume := v1.PodSpec{
+		Containers: []v1.Container{
+			{
+				Image: "gcr.io/30",
+			},
+		},
+		Volumes: []v1.Volume{
+			{
+				Name: "imageVolume",
+				VolumeSource: v1.VolumeSource{
+					Image: &v1.ImageVolumeSource{
+						Reference: "gcr.io/300",
+					},
+				},
+			},
+		},
+	}
+
 	test30Init300 := v1.PodSpec{
 		Containers: []v1.Container{
 			{
@@ -342,6 +360,21 @@ func TestImageLocalityPriority(t *testing.T) {
 			name:         "pod with multiple small images",
 		},
 		{
+			// Pod: gcr.io/300 gcr.io/30
+
+			// Node1
+			// Image: gcr.io/300:latest 300MB
+			// Score: 100 * (300M * 1/2 - 23M) / (1000M - 23M) = 12
+
+			// Node2
+			// Image: gcr.io/30:latest 30MB
+			// Score:  100 * (30M - 23M) / (1000M - 23M) = 0
+			pod:          &v1.Pod{Spec: testImageVolume},
+			nodes:        []*v1.Node{makeImageNode("node1", node300600900), makeImageNode("node2", node400030)},
+			expectedList: []fwk.NodeScore{{Name: "node1", Score: 12}, {Name: "node2", Score: 0}},
+			name:         "pod with ImageVolume",
+		},
+		{
 			// Pod: gcr.io/30  InitContainers: gcr.io/300
 
 			// Node1
@@ -394,6 +427,82 @@ func TestImageLocalityPriority(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestImageSignature(t *testing.T) {
+	tests := []struct {
+		name              string
+		pod               *v1.Pod
+		expectedSignature []fwk.SignFragment
+	}{
+		{
+			name: "no images",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{},
+				},
+			},
+			expectedSignature: []fwk.SignFragment{
+				{
+					Key:   fwk.ImageNamesSignerName,
+					Value: []string{},
+				},
+			},
+		},
+		{
+			name: "one image",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{{Name: "c", Image: "myimage"}},
+				},
+			},
+			expectedSignature: []fwk.SignFragment{
+				{
+					Key:   fwk.ImageNamesSignerName,
+					Value: []string{"myimage:latest"},
+				},
+			},
+		},
+		{
+			name: "two images unsorted",
+			pod: &v1.Pod{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{Name: "c", Image: "zmyimage"},
+						{Name: "c2", Image: "myimage"},
+					},
+				},
+			},
+			expectedSignature: []fwk.SignFragment{
+				{
+					Key:   fwk.ImageNamesSignerName,
+					Value: []string{"myimage:latest", "zmyimage:latest"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			snapshot := cache.NewSnapshot(nil, nil)
+			fh, _ := runtime.NewFramework(ctx, nil, nil, runtime.WithSnapshotSharedLister(snapshot))
+
+			p, err := New(ctx, nil, fh)
+			if err != nil {
+				t.Fatalf("creating plugin: %v", err)
+			}
+			signature, _ := p.(*ImageLocality).SignPod(ctx, test.pod)
+
+			if diff := cmp.Diff(test.expectedSignature, signature); diff != "" {
+				t.Fatalf("Diff %s", diff)
+			}
+		})
+	}
+
 }
 
 func TestNormalizedImageName(t *testing.T) {

@@ -55,14 +55,14 @@ type RuntimeHelper interface {
 	// of a pod.
 	GetPodCgroupParent(pod *v1.Pod) string
 	GetPodDir(podUID types.UID) string
-	GeneratePodHostNameAndDomain(pod *v1.Pod) (hostname string, hostDomain string, err error)
+	GeneratePodHostNameAndDomain(logger klog.Logger, pod *v1.Pod) (hostname string, hostDomain string, err error)
 	// GetExtraSupplementalGroupsForPod returns a list of the extra
 	// supplemental groups for the Pod. These extra supplemental groups come
 	// from annotations on persistent volumes that the pod depends on.
 	GetExtraSupplementalGroupsForPod(pod *v1.Pod) []int64
 
 	// GetOrCreateUserNamespaceMappings returns the configuration for the sandbox user namespace
-	GetOrCreateUserNamespaceMappings(pod *v1.Pod, runtimeHandler string) (*runtimeapi.UserNamespace, error)
+	GetOrCreateUserNamespaceMappings(logger klog.Logger, pod *v1.Pod, runtimeHandler string) (*runtimeapi.UserNamespace, error)
 
 	// PrepareDynamicResources prepares resources for a pod.
 	PrepareDynamicResources(ctx context.Context, pod *v1.Pod) error
@@ -111,6 +111,71 @@ func ShouldContainerBeRestarted(logger klog.Logger, container *v1.Container, pod
 		// Check the exit code.
 		if status.ExitCode == 0 {
 			logger.V(4).Info("Already successfully ran container, do nothing", "pod", klog.KObj(pod), "containerName", container.Name)
+			return false
+		}
+	}
+	return true
+}
+
+// ShouldAllContainersRestart checks if the pod should be restarted.
+// First checks whether the apiPodStatus has the AllContainersRestarting condition.
+// Then checks if any container from podStatus are exited with matching rules,
+// or any containers from apiPodStatus are exited with matching rules.
+func ShouldAllContainersRestart(pod *v1.Pod, podStatus *PodStatus, apiPodStatus *v1.PodStatus) bool {
+	if apiPodStatus != nil {
+		for _, cond := range apiPodStatus.Conditions {
+			if cond.Type == v1.AllContainersRestarting && cond.Status == v1.ConditionTrue {
+				return true
+			}
+		}
+	}
+
+	nameToAPIStatus := make(map[string]*v1.ContainerStatus)
+	if apiPodStatus != nil {
+		for i := range apiPodStatus.InitContainerStatuses {
+			nameToAPIStatus[apiPodStatus.InitContainerStatuses[i].Name] = &apiPodStatus.InitContainerStatuses[i]
+		}
+		for i := range apiPodStatus.ContainerStatuses {
+			nameToAPIStatus[apiPodStatus.ContainerStatuses[i].Name] = &apiPodStatus.ContainerStatuses[i]
+		}
+	}
+
+	for c := range podutil.ContainerIter(&pod.Spec, podutil.InitContainers|podutil.Containers) {
+		if c == nil {
+			continue
+		}
+		if podStatus != nil {
+			status := podStatus.FindContainerStatusByName(c.Name)
+			if status == nil || status.State != ContainerStateExited {
+				continue
+			}
+			exitCode := int32(status.ExitCode)
+			rule, ok := podutil.FindMatchingContainerRestartRule(*c, exitCode)
+			if ok && rule.Action == v1.ContainerRestartRuleActionRestartAllContainers {
+				return true
+			}
+		}
+		if apiPodStatus != nil {
+			apiStatus, ok := nameToAPIStatus[c.Name]
+			if !ok || apiStatus.State.Terminated == nil {
+				continue
+			}
+			exitCode := apiStatus.State.Terminated.ExitCode
+			rule, ok := podutil.FindMatchingContainerRestartRule(*c, exitCode)
+			if ok && rule.Action == v1.ContainerRestartRuleActionRestartAllContainers {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// AllContainersRestartCleanedUp returns true if all containers are removed
+// from the runtime and podStatus.
+func AllContainersRestartCleanedUp(pod *v1.Pod, podStatus *PodStatus) bool {
+	for c := range podutil.ContainerIter(&pod.Spec, podutil.Containers|podutil.InitContainers) {
+		if podStatus.FindContainerStatusByName(c.Name) != nil {
 			return false
 		}
 	}
