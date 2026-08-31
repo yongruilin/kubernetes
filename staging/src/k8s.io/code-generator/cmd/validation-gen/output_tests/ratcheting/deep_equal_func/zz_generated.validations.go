@@ -115,14 +115,14 @@ func Validate_Struct(
 				}
 			}
 			// call field-attached validations
-			if e := validate.EachMapVal(ctx, op, fldPath, obj, oldObj, deepEqualImpl_,
+			if e := validate.EachMapVal(ctx, op, fldPath, obj, oldObj, CustomDeepEqual,
 				func(ctx context.Context, op operation.Operation, fldPath *field.Path, obj, oldObj *NonComparableStruct) field.ErrorList {
 					return validate.FixedResult(ctx, op, fldPath, obj, oldObj, false, "field Struct.MapField[*]")
 				}); len(e) != 0 {
 				errs = append(errs, e...)
 			}
 			// iterate the map and call the value type's validation function
-			if e := validate.EachMapVal(ctx, op, fldPath, obj, oldObj, deepEqualImpl_, Validate_NonComparableStruct); len(e) != 0 {
+			if e := validate.EachMapVal(ctx, op, fldPath, obj, oldObj, CustomDeepEqual, Validate_NonComparableStruct); len(e) != 0 {
 				errs = append(errs, e...)
 			}
 			return
@@ -135,9 +135,4 @@ func Validate_Struct(
 	}
 
 	return errs
-}
-
-// deepEqualImpl_ is a validate.MatchFunc which allows the implementation of deep-equality to be defined at codegen time.
-func deepEqualImpl_[T any](a, b T) bool {
-	return CustomDeepEqual(a, b)
 }
