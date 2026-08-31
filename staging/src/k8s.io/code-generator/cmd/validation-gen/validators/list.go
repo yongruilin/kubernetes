@@ -408,7 +408,6 @@ func (cutv customUniqueTagValidator) Docs() TagDoc {
 var (
 	validateValSliceUnique    = types.Name{Package: libValidationPkg, Name: "ValSliceUnique"}
 	validatePtrSliceUnique    = types.Name{Package: libValidationPkg, Name: "PtrSliceUnique"}
-	validateSemanticDeepEqual = DeepEqualImpl
 	validateDirectEqual       = types.Name{Package: libValidationPkg, Name: "DirectEqual"}
 )
 
@@ -487,7 +486,7 @@ func getListValidations(byPath map[string]*listMetadata, context Context) (Valid
 		// comparable, and structs might hold pointer fields, which are directly
 		// comparable but not what we need.
 		//
-		matchArg := validateSemanticDeepEqual
+		matchArg := DeepEqualFunc
 		if util.IsDirectComparable(util.NonPointer(util.NativeType(nt.Elem))) {
 			matchArg = validateDirectEqual
 		}

@@ -32,7 +32,7 @@ var localSchemeBuilder = testscheme.New()
 
 var CustomDeepEqualCalls int
 
-func CustomDeepEqual(a, b any) bool {
+func CustomDeepEqual[T any](a, b T) bool {
 	CustomDeepEqualCalls++
 	return reflect.DeepEqual(a, b)
 }

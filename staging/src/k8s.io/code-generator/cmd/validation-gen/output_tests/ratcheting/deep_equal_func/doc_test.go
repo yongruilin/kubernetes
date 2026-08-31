@@ -55,7 +55,7 @@ func TestDeepEqualFunc(t *testing.T) {
 		t.Errorf("expected CustomDeepEqual to be called during update ratcheting, got %d calls", CustomDeepEqualCalls)
 	}
 
-	// Update with a new map key added: old key "a" ratchets via deepEqualImpl_ -> CustomDeepEqual,
+	// Update with a new map key added: old key "a" ratchets via CustomDeepEqual,
 	// only new key "b" fails.
 	val2 := 20
 	updateObj := &Struct{

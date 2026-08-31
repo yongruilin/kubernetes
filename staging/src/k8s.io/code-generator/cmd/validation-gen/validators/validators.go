@@ -26,9 +26,10 @@ import (
 	"k8s.io/gengo/v2/types"
 )
 
-var (
-	DeepEqualImpl = types.Name{Name: "deepEqualImpl_"}
-)
+// DeepEqualFunc is a placeholder for the deep-equal function configured for
+// the package being generated (see +k8s:validation-gen-deep-equal-func).  The
+// generator replaces it with the real name when emitting code.
+var DeepEqualFunc = types.Name{Name: "<deep-equal-func>"}
 
 // TagValidator describes a single validation tag and how to use it. To be
 // findable by validation-gen, a TagValidator must be registered - see
